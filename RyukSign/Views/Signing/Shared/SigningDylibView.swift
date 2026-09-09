@@ -7,7 +7,6 @@
 
 import SwiftUI
 import NimbleViews
-import ZsignSwift
 
 // MARK: - View
 struct SigningDylibView: View {
@@ -55,12 +54,13 @@ struct SigningDylibView: View {
 // MARK: - Extension: View
 extension SigningDylibView {
 	private func _loadDylibs() {
-		guard let path = Storage.shared.getAppDirectory(for: app) else { return }
+		guard
+			let path = Storage.shared.getAppDirectory(for: app),
+			let bundle = Bundle(url: path),
+			!bundle.exec.isEmpty
+		else { return }
 
-		let bundle = Bundle(url: path)
-		let execPath = path.appendingPathComponent(bundle?.exec ?? "").relativePath
-
-		let allDylibs = Zsign.listDylibs(appExecutable: execPath).map { $0 as String }
+		let allDylibs = MachOReader.dylibs(forExecutableAt: path.appendingPathComponent(bundle.exec))
 
 		_dylibs = allDylibs.filter { $0.hasPrefix("@rpath") || $0.hasPrefix("@executable_path") }
 		_hiddenDylibCount = allDylibs.count - _dylibs.count

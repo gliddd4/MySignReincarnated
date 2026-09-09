@@ -72,6 +72,7 @@ final class WebManager: ObservableObject {
 			_server = try WebManagerServer(port: port, auth: auth) { [weak self] name in
 				DispatchQueue.main.async {
 					guard let self else { return }
+					self.recentUploads.removeAll { $0 == name }
 					self.recentUploads.insert(name, at: 0)
 					if self.recentUploads.count > 25 {
 						self.recentUploads.removeLast(self.recentUploads.count - 25)

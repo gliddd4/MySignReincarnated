@@ -17,14 +17,10 @@ struct TweakDetailView: View {
 
 	let tweakId: UUID
 
-	@State private var _isAddingVersion = false
-	@State private var _isAddingFile = false
 	@State private var _isPickingFromLibrary = false
 	@State private var _newBundleId = ""
-	@State private var _exportURLs: _ExportURLs?
 	@State private var _expandedComponents: Set<UUID> = []
 
-	private struct _ExportURLs: Identifiable { let id = UUID(); let urls: [URL] }
 
 	// MARK: Body
 	var body: some View {
@@ -43,39 +39,6 @@ struct TweakDetailView: View {
 				Color.clear.onAppear { dismiss() }
 			}
 		}
-		.sheet(isPresented: $_isAddingVersion) {
-			FileImporterRepresentableView(
-				allowedContentTypes: [.dylib, .deb],
-				allowsMultipleSelection: true,
-				folder: .tweaks,
-				onDocumentsPicked: { urls in
-					guard !urls.isEmpty else { return }
-					let next = (manager.tweak(tweakId)?.versions.count ?? 0) + 1
-					if manager.addVersion(to: tweakId, fromFiles: urls, label: "v\(next)") != nil {
-						Toast.success(.localized("Version added"), systemImage: "plus.circle.fill")
-					}
-				}
-			)
-			.ignoresSafeArea()
-		}
-		.sheet(isPresented: $_isAddingFile) {
-			FileImporterRepresentableView(
-				allowedContentTypes: [.dylib, .deb],
-				allowsMultipleSelection: true,
-				folder: .tweaks,
-				onDocumentsPicked: { urls in
-					guard
-						!urls.isEmpty,
-						let versionId = manager.tweak(tweakId)?.activeVersion?.id
-					else { return }
-					let added = manager.addComponents(to: tweakId, versionId: versionId, fromFiles: urls)
-					if !added.isEmpty {
-						Toast.success(.localized("Added %lld files", arguments: added.count), systemImage: "plus.circle.fill")
-					}
-				}
-			)
-			.ignoresSafeArea()
-		}
 		.sheet(isPresented: $_isPickingFromLibrary) {
 			AppLibraryPicker { app in
 				guard let identifier = app.identifier, !identifier.isEmpty else { return }
@@ -86,9 +49,24 @@ struct TweakDetailView: View {
 				}
 			}
 		}
-		.sheet(item: $_exportURLs) { item in
-			DocumentExporterView(urls: item.urls)
-				.ignoresSafeArea()
+	}
+
+	private func _addVersion() {
+		DocumentPicker.open([.dylib, .deb], multiple: true, folder: .tweaks) { urls in
+			let next = (manager.tweak(tweakId)?.versions.count ?? 0) + 1
+			if manager.addVersion(to: tweakId, fromFiles: urls, label: "v\(next)") != nil {
+				Toast.success(.localized("Version added"), systemImage: "plus.circle.fill")
+			}
+		}
+	}
+
+	private func _addFiles() {
+		DocumentPicker.open([.dylib, .deb], multiple: true, folder: .tweaks) { urls in
+			guard let versionId = manager.tweak(tweakId)?.activeVersion?.id else { return }
+			let added = manager.addComponents(to: tweakId, versionId: versionId, fromFiles: urls)
+			if !added.isEmpty {
+				Toast.success(.localized("Added %lld files", arguments: added.count), systemImage: "plus.circle.fill")
+			}
 		}
 	}
 
@@ -112,7 +90,7 @@ struct TweakDetailView: View {
 
 	private func _exportToFiles(_ version: TweakVersion) {
 		guard let url = _exportable(version) else { return }
-		_exportURLs = _ExportURLs(urls: [url])
+		DocumentPicker.export([url])
 	}
 }
 
@@ -154,7 +132,7 @@ extension TweakDetailView {
 			}
 
 			Button {
-				_isAddingVersion = true
+				_addVersion()
 			} label: {
 				Label(.localized("Add Version"), systemImage: "plus")
 			}
@@ -221,7 +199,7 @@ extension TweakDetailView {
 					_componentRow(tweak: tweak, version: version, component: component)
 				}
 				Button {
-					_isAddingFile = true
+					_addFiles()
 				} label: {
 					Label(.localized("Add File"), systemImage: "plus")
 				}
@@ -369,7 +347,7 @@ extension TweakDetailView {
 			}
 
 			Button {
-				_isPickingFromLibrary = true
+				Presentation.afterDismiss { _isPickingFromLibrary = true }
 			} label: {
 				Label(.localized("Choose From Library"), systemImage: "apps.iphone")
 			}

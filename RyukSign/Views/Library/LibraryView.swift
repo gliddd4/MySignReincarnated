@@ -16,7 +16,6 @@ struct LibraryView: View {
     
     @State private var _selectedInfoAppPresenting: AnyApp?
     @State private var _selectedSigningAppPresenting: AnyApp?
-    @State private var _isImportingPresenting = false
     @State private var _isDownloadingPresenting = false
     @State private var _alertDownloadString: String = "" // for _isDownloadingPresenting
     
@@ -125,9 +124,6 @@ struct LibraryView: View {
                 .fullScreenCover(item: $_selectedSigningAppPresenting) { app in
                     SigningView(app: app.base)
                         .compatNavigationTransition(id: app.base.uuid ?? "", ns: _namespace)
-                }
-                .sheet(isPresented: $_isImportingPresenting) {
-                    importerSheet
                 }
                 .alert(.localized("Import from URL"), isPresented: $_isDownloadingPresenting) {
                     urlImportAlert
@@ -343,31 +339,17 @@ struct LibraryView: View {
     @ViewBuilder
     private var importMenuActions: some View {
         Button(.localized("Import from Files"), systemImage: "folder") {
-            _isImportingPresenting = true
-        }
-        Button(.localized("Import from URL"), systemImage: "globe") {
-            _isDownloadingPresenting = true
-        }
-    }
-    
-    // MARK: Importer Sheet
-    private var importerSheet: some View {
-        FileImporterRepresentableView(
-            allowedContentTypes: [.ipa, .tipa],
-            allowsMultipleSelection: true,
-            folder: .apps,
-            onDocumentsPicked: { urls in
-                guard !urls.isEmpty else { return }
-                
+            DocumentPicker.open([.ipa, .tipa], multiple: true, folder: .apps) { urls in
                 for url in urls {
-                    let id = "FeatherManualDownload_\(UUID().uuidString)"
-                    let dl = downloadManager.startArchive(from: url, id: id)
+                    downloadManager.startArchive(from: url, id: "FeatherManualDownload_\(UUID().uuidString)")
                 }
             }
-        )
-        .ignoresSafeArea()
+        }
+        Button(.localized("Import from URL"), systemImage: "globe") {
+            Presentation.afterDismiss { _isDownloadingPresenting = true }
+        }
     }
-    
+
     // MARK: URL Import Alert
     @ViewBuilder
     private var urlImportAlert: some View {

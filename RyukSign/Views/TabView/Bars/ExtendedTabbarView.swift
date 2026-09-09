@@ -112,7 +112,7 @@ struct ExtendedTabbarView: View {
         .tabViewCustomization($customization)
         .sheet(isPresented: $_isAddingPresenting) {
             SourcesAddView()
-                .presentationDetents([.medium])
+                .adaptiveSheetSizing(phone: [.medium])
         }
         .onAppear {
             selectedTab = .main(tabSelection.selectedTab)

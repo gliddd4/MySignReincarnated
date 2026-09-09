@@ -27,7 +27,17 @@ extension Bundle {
 	
 	/// Get the executable name of the app
 	public var exec: String {
-		return object(forInfoDictionaryKey: "CFBundleExecutable") as? String ?? ""
+		let name = _rawInfo("CFBundleExecutable") as? String ?? ""
+		if !name.isEmpty, FileManager.default.fileExists(atPath: bundleURL.appendingPathComponent(name).path) {
+			return name
+		}
+		return executableURL?.lastPathComponent ?? name
+	}
+
+	// Raw plist for keys naming a file: InfoPlist.strings can localize them, and
+	// object(forInfoDictionaryKey:) returns that translation.
+	private func _rawInfo(_ key: String) -> Any? {
+		infoDictionary?[key]
 	}
 	
 	/// Get the "short" version of the app
@@ -42,7 +52,7 @@ extension Bundle {
 	/// Get the icon of the app
 	public var iconFileName: String? {
 		if
-			let icons = object(forInfoDictionaryKey: "CFBundleIcons") as? [String: Any],
+			let icons = _rawInfo("CFBundleIcons") as? [String: Any],
 			let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
 			let files = primary["CFBundleIconFiles"] as? [String],
 			let name = files.last
@@ -51,7 +61,7 @@ extension Bundle {
 		}
 		
 		if
-			let iPadIcons = object(forInfoDictionaryKey: "CFBundleIcons~ipad") as? [String: Any],
+			let iPadIcons = _rawInfo("CFBundleIcons~ipad") as? [String: Any],
 			let primary = iPadIcons["CFBundlePrimaryIcon"] as? [String: Any],
 			let files = primary["CFBundleIconFiles"] as? [String],
 			let name = files.last
@@ -60,27 +70,27 @@ extension Bundle {
 		}
 		
 		if
-			let iconFiles = object(forInfoDictionaryKey: "CFBundleIconFiles") as? [String],
+			let iconFiles = _rawInfo("CFBundleIconFiles") as? [String],
 			let name = iconFiles.last ?? iconFiles.first
 		{
 			return name
 		}
 		
 		if
-			let iPhoneIconFiles = object(forInfoDictionaryKey: "CFBundleIconFiles~iphone") as? [String],
+			let iPhoneIconFiles = _rawInfo("CFBundleIconFiles~iphone") as? [String],
 			let name = iPhoneIconFiles.last ?? iPhoneIconFiles.first
 		{
 			return name
 		}
 		
 		if
-			let iPadIconFiles = object(forInfoDictionaryKey: "CFBundleIconFiles~ipad") as? [String],
+			let iPadIconFiles = _rawInfo("CFBundleIconFiles~ipad") as? [String],
 			let name = iPadIconFiles.last ?? iPadIconFiles.first
 		{
 			return name
 		}
 		
-		if let iconFile = object(forInfoDictionaryKey: "CFBundleIconFile") as? String {
+		if let iconFile = _rawInfo("CFBundleIconFile") as? String {
 			return iconFile
 		}
 		

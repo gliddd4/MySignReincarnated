@@ -140,7 +140,7 @@ extension LibraryCellView {
 	@ViewBuilder
 	private func _contextActions(for app: AppInfoPresentable) -> some View {
 		Button(.localized("Get Info"), systemImage: "info.circle") {
-			selectedInfoAppPresenting = AnyApp(base: app)
+			Presentation.afterDismiss { selectedInfoAppPresenting = AnyApp(base: app) }
 		}
 
 		if let bundleId = app.originalIdentifier ?? app.identifier {
@@ -189,7 +189,7 @@ extension LibraryCellView {
 				InstallQueue.shared.enqueue(app)
 			}
 			Button(.localized("Re-sign"), systemImage: "signature") {
-				selectedSigningAppPresenting = AnyApp(base: app)
+				Presentation.afterDismiss { selectedSigningAppPresenting = AnyApp(base: app) }
 			}
 			Button(.localized("Export"), systemImage: "square.and.arrow.up") {
 				InstallQueue.shared.enqueue(app, exporting: true)
@@ -199,7 +199,7 @@ extension LibraryCellView {
 				InstallQueue.shared.enqueue(app)
 			}
 			Button(.localized("Sign"), systemImage: "signature") {
-				selectedSigningAppPresenting = AnyApp(base: app)
+				Presentation.afterDismiss { selectedSigningAppPresenting = AnyApp(base: app) }
 			}
 		}
 	}

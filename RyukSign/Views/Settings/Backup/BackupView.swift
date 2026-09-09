@@ -11,9 +11,6 @@ import NimbleViews
 // MARK: - View
 struct BackupView: View {
 	@State private var _isWorking = false
-	@State private var _exportURL: URL?
-	@State private var _showExporter = false
-	@State private var _showImporter = false
 	@State private var _showRestorePassword = false
 	@State private var _password = ""
 	@State private var _pendingImportURL: URL?
@@ -38,7 +35,16 @@ struct BackupView: View {
 
 			Section {
 				Button {
-					_showImporter = true
+					DocumentPicker.open([.ryukBackup], folder: .backups) { urls in
+						guard let url = urls.first else { return }
+						_pendingImportURL = url
+						_password = ""
+						if BackupCrypto.isEncrypted(url) {
+							_showRestorePassword = true
+						} else {
+							_openBackup()
+						}
+					}
 				} label: {
 					Label(.localized("Restore from Backup"), systemImage: "square.and.arrow.down")
 				}
@@ -77,28 +83,6 @@ struct BackupView: View {
 					_pendingSummary = BackupManager.shared.restore(archive, components: components)
 				}
 			)
-		}
-		.sheet(isPresented: $_showExporter) {
-			if let url = _exportURL {
-				DocumentExporterView(urls: [url]).ignoresSafeArea()
-			}
-		}
-		.sheet(isPresented: $_showImporter) {
-			FileImporterRepresentableView(
-				allowedContentTypes: [.ryukBackup],
-				folder: .backups,
-				onDocumentsPicked: { urls in
-					guard let url = urls.first else { return }
-					_pendingImportURL = url
-					_password = ""
-					if BackupCrypto.isEncrypted(url) {
-						_showRestorePassword = true
-					} else {
-						_openBackup()
-					}
-				}
-			)
-			.ignoresSafeArea()
 		}
 		.alert(.localized("Backup Password"), isPresented: $_showRestorePassword) {
 			SecureField(.localized("Password"), text: $_password)
@@ -139,13 +123,13 @@ struct BackupView: View {
 		_isWorking = true
 		Task {
 			do {
-				_exportURL = try await BackupManager.shared.makeBackup(
+				let url = try await BackupManager.shared.makeBackup(
 					password: pending.password,
 					components: pending.components
 				)
 				_isWorking = false
 				Toast.success(.localized("Backup created"))
-				_showExporter = true
+				DocumentPicker.export([url])
 			} catch {
 				_isWorking = false
 				Toast.error(error.localizedDescription)

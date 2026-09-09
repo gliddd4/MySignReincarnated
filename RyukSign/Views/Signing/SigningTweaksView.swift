@@ -10,7 +10,6 @@ import NimbleViews
 
 // MARK: - View
 struct SigningTweaksView: View {
-	@State private var _isAddingPresenting = false
 	@State private var _isLibraryPickerPresenting = false
 
 	var app: AppInfoPresentable
@@ -37,24 +36,14 @@ struct SigningTweaksView: View {
 				style: .icon,
 				placement: .topBarTrailing
 			) {
-				_isAddingPresenting = true
-			}
-		}
-		.sheet(isPresented: $_isAddingPresenting) {
-			FileImporterRepresentableView(
-				allowedContentTypes: [.dylib, .deb],
-				allowsMultipleSelection: true,
-				folder: .tweaks,
-				onDocumentsPicked: { urls in
-					guard !urls.isEmpty else { return }
+				DocumentPicker.open([.dylib, .deb], multiple: true, folder: .tweaks) { urls in
 					for url in urls {
 						FileManager.default.moveAndStore(url, with: "FeatherTweak") { url in
 							options.injectionFiles.append(url)
 						}
 					}
 				}
-			)
-			.ignoresSafeArea()
+			}
 		}
 		.sheet(isPresented: $_isLibraryPickerPresenting) {
 			SigningLibraryTweakPicker(existingIds: Set(_specs.wrappedValue.map { $0.id })) { tweak in

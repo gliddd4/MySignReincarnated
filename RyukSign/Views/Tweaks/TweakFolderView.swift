@@ -25,10 +25,12 @@ struct TweakFolderView: View {
 	@State private var _alert: FolderAlert?
 	@State private var _renameText = ""
 
+	private func _show(_ sheet: Sheet) { Presentation.afterDismiss { _sheet = sheet } }
+	private func _show(_ alert: FolderAlert) { Presentation.afterDismiss { _alert = alert } }
+
 	enum Sheet: Identifiable {
-		case export([URL])
 		case move(Set<UUID>)
-		var id: String { if case .export = self { return "export" } else { return "move" } }
+		var id: String { "move" }
 	}
 
 	enum FolderAlert: Identifiable {
@@ -156,7 +158,7 @@ struct TweakFolderView: View {
 					Button { _saveFolder() } label: { Label(.localized("Save Folder to Files"), systemImage: "arrow.down.doc") }
 					Button {
 						_renameText = _folderName
-						_alert = .rename
+						_show(.rename)
 					} label: { Label(.localized("Rename Folder"), systemImage: "pencil") }
 					Button(role: .destructive) {
 						manager.deleteFolder(folderId)
@@ -189,7 +191,7 @@ struct TweakFolderView: View {
 				tweak: tweak,
 				onShare: { _share(tweak) },
 				onExport: { _exportToFiles(tweak) },
-				onMove: { _sheet = .move([tweak.id]) },
+				onMove: { _show(.move([tweak.id])) },
 				onDelete: { manager.deleteTweak(tweak.id) }
 			)
 		}
@@ -200,8 +202,6 @@ struct TweakFolderView: View {
 	@ViewBuilder
 	private func _sheetView(_ sheet: Sheet) -> some View {
 		switch sheet {
-		case .export(let urls):
-			DocumentExporterView(urls: urls).ignoresSafeArea()
 		case .move(let ids):
 			TweakFolderPickerView(currentFolderId: folderId) { target in
 				manager.moveTweaks(ids, toFolder: target)
@@ -216,7 +216,7 @@ struct TweakFolderView: View {
 	private var _selectionActions: [SelectionBarAction] {
 		[
 			SelectionBarAction(title: .localized("Move"), systemImage: "folder", enabled: !_selection.isEmpty) {
-				_sheet = .move(_selection)
+				_show(.move(_selection))
 			},
 			SelectionBarAction(title: .localized("Share"), systemImage: "square.and.arrow.up", enabled: !_selection.isEmpty) {
 				let urls = manager.exportableURLs(forTweakIds: _selection)
@@ -226,10 +226,10 @@ struct TweakFolderView: View {
 			SelectionBarAction(title: .localized("Save"), systemImage: "arrow.down.doc", enabled: !_selection.isEmpty) {
 				let urls = manager.exportableURLs(forTweakIds: _selection)
 				if urls.isEmpty { Toast.error(.localized("Couldn't prepare the files"), duration: .long) }
-				else { _sheet = .export(urls) }
+				else { DocumentPicker.export(urls) }
 			},
 			SelectionBarAction(title: .localized("Delete"), systemImage: "trash", role: .destructive, enabled: !_selection.isEmpty) {
-				_alert = .confirmDelete(_selection)
+				_show(.confirmDelete(_selection))
 			}
 		]
 	}
@@ -252,7 +252,7 @@ struct TweakFolderView: View {
 
 	private func _exportToFiles(_ tweak: ManagedTweak) {
 		guard let url = _exportable(tweak) else { return }
-		_sheet = .export([url])
+		DocumentPicker.export([url])
 	}
 
 	private func _shareFolder() {
@@ -266,6 +266,6 @@ struct TweakFolderView: View {
 		guard let url = manager.exportFolder(folderId) else {
 			Toast.error(.localized("This folder is empty"), duration: .long); return
 		}
-		_sheet = .export([url])
+		DocumentPicker.export([url])
 	}
 }

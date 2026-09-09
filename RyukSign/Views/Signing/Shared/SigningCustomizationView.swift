@@ -11,7 +11,6 @@ import NimbleViews
 
 struct SigningCustomizationView: View {
 	@State private var _isAltPickerPresenting = false
-	@State private var _isFilePickerPresenting = false
 	@State private var _isImagePickerPresenting = false
 	@State private var _selectedPhoto: PhotosPickerItem?
 	@State private var _displayedDescription: String?
@@ -38,9 +37,18 @@ struct SigningCustomizationView: View {
 	var body: some View {
 		NBSection(.localized("Customization")) {
 			Menu {
-				Button(.localized("Select Alternative Icon"), systemImage: "app.dashed") { _isAltPickerPresenting = true }
-				Button(.localized("Choose from Files"), systemImage: "folder") { _isFilePickerPresenting = true }
-				Button(.localized("Choose from Photos"), systemImage: "photo") { _isImagePickerPresenting = true }
+				Button(.localized("Select Alternative Icon"), systemImage: "app.dashed") {
+					Presentation.afterDismiss { _isAltPickerPresenting = true }
+				}
+				Button(.localized("Choose from Files"), systemImage: "folder") {
+					DocumentPicker.open([.image], folder: .icons) { urls in
+						guard let url = urls.first else { return }
+						appIcon = UIImage.fromFile(url)?.resizeToSquare()
+					}
+				}
+				Button(.localized("Choose from Photos"), systemImage: "photo") {
+					Presentation.afterDismiss { _isImagePickerPresenting = true }
+				}
 			} label: {
 				if let appIcon {
 					Image(uiImage: appIcon)
@@ -53,17 +61,6 @@ struct SigningCustomizationView: View {
 				NavigationStack {
 					SigningAlternativeIconView(app: app, appIcon: $appIcon, isModifing: true)
 				}
-			}
-			.sheet(isPresented: $_isFilePickerPresenting) {
-				FileImporterRepresentableView(
-					allowedContentTypes: [.image],
-					folder: .icons,
-					onDocumentsPicked: { urls in
-						guard let url = urls.first else { return }
-						appIcon = UIImage.fromFile(url)?.resizeToSquare()
-					}
-				)
-				.ignoresSafeArea()
 			}
 			.photosPicker(isPresented: $_isImagePickerPresenting, selection: $_selectedPhoto)
 			.onChange(of: _selectedPhoto) { newValue in

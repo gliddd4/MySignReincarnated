@@ -9,7 +9,6 @@
 //
 
 import Foundation
-import ZsignSwift
 import OSLog
 
 // MARK: - Model
@@ -85,7 +84,7 @@ enum TweakAnalyzer {
 	// MARK: dylib / framework
 
 	private static func _analyzeMacho(at machoURL: URL, type: TweakFileType, placement: String?, appURL: URL?) -> TweakAnalysis {
-		let loads = Zsign.listDylibs(appExecutable: machoURL.path)
+		let loads = MachOReader.dylibs(forExecutableAt: machoURL)
 		let lowered = loads.map { $0.lowercased() }
 
 		let needsSubstrate = lowered.contains { l in _substrateNeedles.contains { l.contains($0) } }

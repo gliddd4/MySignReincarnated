@@ -132,12 +132,12 @@ extension CertificatesView {
 	@ViewBuilder
 	private func _contextActions(for cert: CertificatePair) -> some View {
 		Button(.localized("Get Info"), systemImage: "info.circle") {
-			_isSelectedInfoPresenting = cert
+			Presentation.afterDismiss { _isSelectedInfoPresenting = cert }
 		}
 		Button(.localized("Change Nickname"), systemImage: "pencil") {
 			_newNickname = cert.nickname ?? ""
 			_certToRename = cert
-			_isRenamingPresenting = true
+			Presentation.afterDismiss { _isRenamingPresenting = true }
 		}
 		Button(.localized("Export Certificate"), systemImage: "square.and.arrow.up") {
 			if let zip = CertificateExporter.makeZip(for: cert) {

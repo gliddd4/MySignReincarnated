@@ -18,8 +18,6 @@ struct CertificatesAddView: View {
 	@State private var _p12Password: String = ""
 	@State private var _certificateName: String = ""
 	
-	@State private var _isImportingP12Presenting = false
-	@State private var _isImportingMobileProvisionPresenting = false
 	
 	var saveButtonDisabled: Bool {
 		_p12URL == nil || _provisionURL == nil
@@ -31,10 +29,14 @@ struct CertificatesAddView: View {
 			Form {
 				NBSection(.localized("Files")) {
 					_importButton(.localized("Import Certificate File"), file: _p12URL) {
-						_isImportingP12Presenting = true
+						DocumentPicker.open([.p12], folder: .certificates) { urls in
+							_p12URL = urls.first
+						}
 					}
 					_importButton(.localized("Import Provisioning File"), file: _provisionURL) {
-						_isImportingMobileProvisionPresenting = true
+						DocumentPicker.open([.mobileProvision], folder: .certificates) { urls in
+							_provisionURL = urls.first
+						}
 					}
 				}
 				NBSection(.localized("Password")) {
@@ -59,28 +61,6 @@ struct CertificatesAddView: View {
 				) {
 					_saveCertificate()
 				}
-			}
-			.sheet(isPresented: $_isImportingP12Presenting) {
-				FileImporterRepresentableView(
-					allowedContentTypes: [.p12],
-					folder: .certificates,
-					onDocumentsPicked: { urls in
-						guard let selectedFileURL = urls.first else { return }
-						self._p12URL = selectedFileURL
-					}
-				)
-				.ignoresSafeArea()
-			}
-			.sheet(isPresented: $_isImportingMobileProvisionPresenting) {
-				FileImporterRepresentableView(
-					allowedContentTypes: [.mobileProvision],
-					folder: .certificates,
-					onDocumentsPicked: { urls in
-						guard let selectedFileURL = urls.first else { return }
-						self._provisionURL = selectedFileURL
-					}
-				)
-				.ignoresSafeArea()
 			}
 		}
 	}

@@ -11,7 +11,6 @@ import IDeviceSwift
 
 // MARK: - View
 struct TunnelView: View {
-	@State private var _isImportingPairingPresenting = false
 	
 	@State var doesHavePairingFile = false
 	@State private var isLocalDevVpnAvailable = false
@@ -35,7 +34,11 @@ struct TunnelView: View {
 			
 			Section {
 				Button(.localized("Import Pairing File"), systemImage: "square.and.arrow.down") {
-					_isImportingPairingPresenting = true
+					DocumentPicker.open([.xmlPropertyList, .plist, .mobiledevicepairing], folder: .pairing) { urls in
+						guard let url = urls.first else { return }
+						FR.movePairing(url)
+						doesHavePairingFile = true
+					}
 				}
 				if #available(iOS 17.4, *) {
 				} else {
@@ -70,18 +73,6 @@ struct TunnelView: View {
 					}
 				}
 			}
-		}
-		.sheet(isPresented: $_isImportingPairingPresenting) {
-			FileImporterRepresentableView(
-				allowedContentTypes:  [.xmlPropertyList, .plist, .mobiledevicepairing],
-				folder: .pairing,
-				onDocumentsPicked: { urls in
-					guard let selectedFileURL = urls.first else { return }
-					FR.movePairing(selectedFileURL)
-					doesHavePairingFile = true
-				}
-			)
-			.ignoresSafeArea()
 		}
 		.onAppear {
 			doesHavePairingFile = FileManager.default.fileExists(atPath: HeartbeatManager.pairingFile())

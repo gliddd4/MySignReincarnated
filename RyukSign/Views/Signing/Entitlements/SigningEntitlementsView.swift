@@ -16,7 +16,6 @@ struct SigningEntitlementsView: View {
 	var app: AppInfoPresentable? = nil
 	var certificate: CertificatePair? = nil
 
-	@State private var _isImportPresenting = false
 	@State private var _isRenamingPresenting = false
 	@State private var _fileToRename: EntitlementsFile?
 	@State private var _newName = ""
@@ -49,21 +48,6 @@ struct SigningEntitlementsView: View {
 			) {
 				_creationActions
 			}
-		}
-		.sheet(isPresented: $_isImportPresenting) {
-			FileImporterRepresentableView(
-				allowedContentTypes: [.xmlPropertyList, .plist, .entitlements, .mobileProvision, .json],
-				folder: .entitlements,
-				onDocumentsPicked: { urls in
-					guard let url = urls.first else { return }
-					if let entry = _manager.addImported(name: url.deletingPathExtension().lastPathComponent, from: url) {
-						_select(entry, push: true)
-					} else {
-						Toast.error(.localized("Couldn't read entitlements from that file"))
-					}
-				}
-			)
-			.ignoresSafeArea()
 		}
 		.alert(.localized("Rename"), isPresented: $_isRenamingPresenting, presenting: _fileToRename) { file in
 			TextField(.localized("Name"), text: $_newName)
@@ -131,7 +115,14 @@ extension SigningEntitlementsView {
 	@ViewBuilder
 	private var _creationActions: some View {
 		Button(.localized("Import File"), systemImage: "square.and.arrow.down") {
-			_isImportPresenting = true
+			DocumentPicker.open([.xmlPropertyList, .plist, .entitlements, .mobileProvision, .json], folder: .entitlements) { urls in
+				guard let url = urls.first else { return }
+				if let entry = _manager.addImported(name: url.deletingPathExtension().lastPathComponent, from: url) {
+					_select(entry, push: true)
+				} else {
+					Toast.error(.localized("Couldn't read entitlements from that file"))
+				}
+			}
 		}
 		Button(.localized("Create Blank"), systemImage: "doc.badge.plus") {
 			_select(_manager.addBlank(name: .localized("New Entitlements")), push: true)

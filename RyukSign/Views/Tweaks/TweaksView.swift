@@ -34,26 +34,19 @@ struct TweakLibraryList: View {
 	@State private var _alert: ActiveAlert?
 	@State private var _folderNameField = ""
 
-	// Chain presentations off the previous one's dismissal; a guessed delay let a
-	// toolbar tap that set `_sheet` get clobbered by the pending re-set.
-	@State private var _pendingSheet: Sheet?
-	@State private var _pendingAlert: ActiveAlert?
+	// Setting state while a menu or alert dismisses drops the presentation.
+	private func _show(_ sheet: Sheet) { Presentation.afterDismiss { _sheet = sheet } }
+	private func _show(_ alert: ActiveAlert) { Presentation.afterDismiss { _alert = alert } }
 
 	enum Sheet: Identifiable {
-		case importFile
-		case extractIPAPicker
 		case ipaExtract(URL)
 		case extractLibrary
-		case export([URL])
 		case move(Set<UUID>)
 
 		var id: String {
 			switch self {
-			case .importFile: 		return "importFile"
-			case .extractIPAPicker: return "extractIPAPicker"
 			case .ipaExtract: 		return "ipaExtract"
 			case .extractLibrary: 	return "extractLibrary"
-			case .export: 			return "export"
 			case .move: 			return "move"
 			}
 		}
@@ -127,10 +120,10 @@ struct TweakLibraryList: View {
 		}
 		.toolbar { _toolbar }
 		.selectionActionBar(isActive: _isEditing, actions: _selectionActions)
-		.sheet(item: $_sheet, onDismiss: { _drainPending() }) { sheet in _sheetView(sheet) }
+		.sheet(item: $_sheet) { sheet in _sheetView(sheet) }
 		.alert(
 			_alertTitle,
-			isPresented: Binding(get: { _alert != nil }, set: { if !$0 { _alert = nil; _drainPending() } })
+			isPresented: Binding(get: { _alert != nil }, set: { if !$0 { _alert = nil } })
 		) {
 			_alertButtons
 		} message: {
@@ -183,52 +176,15 @@ struct TweakLibraryList: View {
 		}
 	}
 
-	// MARK: - Chained presentation
-
-	// Queue the next presentation; `_drainPending()` fires it from the dismissal callback.
-	private func _queueSheet(_ sheet: Sheet) { _pendingSheet = sheet; _pendingAlert = nil; _sheet = nil }
-	private func _queueAlert(_ alert: ActiveAlert) { _pendingAlert = alert; _pendingSheet = nil; _sheet = nil }
-
-	private func _drainPending() {
-		if let next = _pendingSheet {
-			_pendingSheet = nil
-			DispatchQueue.main.async { _sheet = next }
-		} else if let next = _pendingAlert {
-			_pendingAlert = nil
-			DispatchQueue.main.async { _alert = next }
-		}
-	}
-
 	// MARK: - Sheets
 
 	@ViewBuilder
 	private func _sheetView(_ sheet: Sheet) -> some View {
 		switch sheet {
-		case .importFile:
-			FileImporterRepresentableView(
-				allowedContentTypes: [.dylib, .deb],
-				allowsMultipleSelection: true,
-				folder: .tweaks,
-				onDocumentsPicked: { urls in _handlePickedImport(urls) }
-			)
-			.ignoresSafeArea()
-		case .extractIPAPicker:
-			FileImporterRepresentableView(
-				allowedContentTypes: [.ipa, .tipa],
-				allowsMultipleSelection: false,
-				folder: .apps,
-				onDocumentsPicked: { urls in
-					guard let url = urls.first else { _sheet = nil; return }
-					_queueSheet(.ipaExtract(url))
-				}
-			)
-			.ignoresSafeArea()
 		case .ipaExtract(let url):
 			TweakIPAExtractView(ipaURL: url)
 		case .extractLibrary:
 			TweakAppExtractPickerView()
-		case .export(let urls):
-			DocumentExporterView(urls: urls).ignoresSafeArea()
 		case .move(let ids):
 			TweakFolderPickerView(currentFolderId: nil) { target in
 				manager.moveTweaks(ids, toFolder: target)
@@ -243,18 +199,25 @@ struct TweakLibraryList: View {
 
 	// MARK: - Import
 
-	// Confirm before importing a large hand-picked batch.
-	private func _handlePickedImport(_ urls: [URL]) {
-		guard !urls.isEmpty else { _sheet = nil; return }
-		if urls.count >= 10 {
-			_queueAlert(.confirmImport(urls))
-		} else {
-			_importFiles(urls)
+	private func _pickImport() {
+		DocumentPicker.open([.dylib, .deb], multiple: true, folder: .tweaks) { urls in
+			if urls.count >= 10 {
+				_show(.confirmImport(urls))
+			} else {
+				_importFiles(urls)
+			}
+		}
+	}
+
+	private func _pickIPA() {
+		DocumentPicker.open([.ipa, .tipa], folder: .apps) { urls in
+			guard let url = urls.first else { return }
+			_show(.ipaExtract(url))
 		}
 	}
 
 	private func _importFiles(_ urls: [URL]) {
-		guard !urls.isEmpty else { _sheet = nil; return }
+		guard !urls.isEmpty else { return }
 		var addedIds: Set<UUID> = []
 		for url in urls {
 			if let tweak = manager.addTweak(name: url.deletingPathExtension().lastPathComponent, from: url) {
@@ -268,12 +231,9 @@ struct TweakLibraryList: View {
 			Toast.success(message, systemImage: "wrench.and.screwdriver.fill")
 			// Offer to file the new tweaks if folders exist.
 			if !manager.folders.isEmpty {
-				_queueSheet(.move(addedIds))
-			} else {
-				_sheet = nil
+				_show(.move(addedIds))
 			}
 		} else {
-			_sheet = nil
 			Toast.error(.localized("Couldn't import tweak"), duration: .sticky)
 		}
 	}
@@ -293,7 +253,7 @@ struct TweakLibraryList: View {
 	private var _selectionActions: [SelectionBarAction] {
 		[
 			SelectionBarAction(title: .localized("Move"), systemImage: "folder", enabled: !_selection.isEmpty) {
-				_sheet = .move(_selection)
+				_show(.move(_selection))
 			},
 			SelectionBarAction(title: .localized("Share"), systemImage: "square.and.arrow.up", enabled: !_selection.isEmpty) {
 				_shareSelection()
@@ -302,7 +262,7 @@ struct TweakLibraryList: View {
 				_saveSelection()
 			},
 			SelectionBarAction(title: .localized("Delete"), systemImage: "trash", role: .destructive, enabled: !_selection.isEmpty) {
-				_alert = .confirmDelete(_selection)
+				_show(.confirmDelete(_selection))
 			}
 		]
 	}
@@ -316,7 +276,7 @@ struct TweakLibraryList: View {
 	private func _saveSelection() {
 		let urls = manager.exportableURLs(forTweakIds: _selection)
 		guard !urls.isEmpty else { Toast.error(.localized("Couldn't prepare the files"), duration: .long); return }
-		_sheet = .export(urls)
+		DocumentPicker.export(urls)
 	}
 }
 
@@ -353,24 +313,24 @@ extension TweakLibraryList {
 			ToolbarItem(placement: .topBarTrailing) {
 				Menu {
 					Button {
-						_sheet = .importFile
+						_pickImport()
 					} label: {
 						Label(.localized("Import File"), systemImage: "doc.badge.plus")
 					}
 					Button {
-						_sheet = .extractIPAPicker
+						_pickIPA()
 					} label: {
 						Label(.localized("Extract from IPA"), systemImage: "shippingbox")
 					}
 					Button {
-						_sheet = .extractLibrary
+						_show(.extractLibrary)
 					} label: {
 						Label(.localized("Extract from Library App"), systemImage: "square.grid.2x2")
 					}
 					Divider()
 					Button {
 						_folderNameField = ""
-						_alert = .newFolder
+						_show(.newFolder)
 					} label: {
 						Label(.localized("New Folder"), systemImage: "folder.badge.plus")
 					}
@@ -420,7 +380,7 @@ extension TweakLibraryList {
 
 	private func _exportToFiles(_ tweak: ManagedTweak) {
 		guard let url = _exportable(tweak) else { return }
-		_sheet = .export([url])
+		DocumentPicker.export([url])
 	}
 
 	// MARK: - Folder export
@@ -440,7 +400,7 @@ extension TweakLibraryList {
 
 	private func _saveFolder(_ folderId: UUID) {
 		guard let url = _folderExportURL(folderId) else { return }
-		_sheet = .export([url])
+		DocumentPicker.export([url])
 	}
 }
 
@@ -454,7 +414,7 @@ extension TweakLibraryList {
 			description: .localized("Import a .dylib or .deb, or send one over from Web Manager in Settings.")
 		) {
 			Button {
-				_sheet = .importFile
+				_pickImport()
 			} label: {
 				Label(.localized("Import Tweak"), systemImage: "plus")
 			}
@@ -479,7 +439,7 @@ extension TweakLibraryList {
 				tweak: tweak,
 				onShare: { _share(tweak) },
 				onExport: { _exportToFiles(tweak) },
-				onMove: { _sheet = .move([tweak.id]) },
+				onMove: { _show(.move([tweak.id])) },
 				onDelete: { manager.deleteTweak(tweak.id) }
 			)
 		}
@@ -552,7 +512,7 @@ extension TweakLibraryList {
 			}
 			Button {
 				_folderNameField = folder.name
-				_alert = .renameFolder(folder.id)
+				_show(.renameFolder(folder.id))
 			} label: {
 				Label(.localized("Rename"), systemImage: "pencil")
 			}
@@ -567,7 +527,7 @@ extension TweakLibraryList {
 			}
 			Button {
 				_folderNameField = folder.name
-				_alert = .renameFolder(folder.id)
+				_show(.renameFolder(folder.id))
 			} label: {
 				Label(.localized("Rename"), systemImage: "pencil")
 			}

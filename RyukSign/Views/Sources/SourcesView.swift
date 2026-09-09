@@ -110,6 +110,7 @@ struct SourcesView: View {
 		}
 		.sheet(isPresented: $_isAddingPresenting) {
 			SourcesAddView()
+				.adaptiveSheetSizing()
 		}
 	}
 
@@ -133,6 +134,7 @@ struct SourcesView: View {
 		}
 		.sheet(isPresented: $_isAddingPresenting) {
 			SourcesAddView()
+				.adaptiveSheetSizing()
 		}
 		.alert(
 			deleteDialogTitle,

@@ -22,7 +22,6 @@ struct SigningEntitlementsEditorView: View {
 	@State private var _isAddingPresenting = false
 	@State private var _addKind: PlistValueKind = .string
 	@State private var _showsRaw = false
-	@State private var _isImportMergePresenting = false
 	@State private var _editMode: EditMode = .inactive
 	@State private var _selectedKeys: Set<String> = []
 	@State private var _flaggedOnly = false
@@ -106,17 +105,6 @@ struct SigningEntitlementsEditorView: View {
 					_save()
 				}
 			}
-		}
-		.sheet(isPresented: $_isImportMergePresenting) {
-			FileImporterRepresentableView(
-				allowedContentTypes: [.xmlPropertyList, .plist, .entitlements, .mobileProvision, .json],
-				folder: .entitlements,
-				onDocumentsPicked: { urls in
-					guard let url = urls.first else { return }
-					_importMerge(from: url)
-				}
-			)
-			.ignoresSafeArea()
 		}
 		.confirmationDialog(
 			_detailKey ?? "",
@@ -227,7 +215,10 @@ extension SigningEntitlementsEditorView {
 			}
 		}
 		Button(.localized("Import File"), systemImage: "square.and.arrow.down") {
-			_isImportMergePresenting = true
+			DocumentPicker.open([.xmlPropertyList, .plist, .entitlements, .mobileProvision, .json], folder: .entitlements) { urls in
+				guard let url = urls.first else { return }
+				_importMerge(from: url)
+			}
 		}
 		if !_clipboard.entries.isEmpty {
 			Button(.localized("Paste"), systemImage: "doc.on.clipboard") {
