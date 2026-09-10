@@ -118,7 +118,7 @@ struct LibraryView: View {
                 .sheet(item: $_selectedInfoAppPresenting) { app in
                     LibraryInfoView(app: app.base)
                 }
-                .fullScreenCover(item: $_batchRequest) { request in
+                .fullScreenCover(item: $_batchRequest, onDismiss: InstallCleanup.flush) { request in
                     BatchSignView(apps: request.apps, mode: request.mode)
                 }
                 .fullScreenCover(item: $_selectedSigningAppPresenting) { app in

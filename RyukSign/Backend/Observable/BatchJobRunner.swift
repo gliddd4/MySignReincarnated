@@ -229,6 +229,7 @@ final class BatchJobRunner: ObservableObject {
 			switch result {
 			case .success:
 				items[index].state = .installed
+				InstallCleanup.stage(items[index].installable)
 			case .failure(let error):
 				items[index].state = .failed(error.localizedDescription)
 			}

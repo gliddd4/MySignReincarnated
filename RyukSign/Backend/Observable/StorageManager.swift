@@ -179,9 +179,12 @@ final class StorageManager: ObservableObject {
 extension StorageManager {
 	nonisolated static func purgeCaches() {
 		URLCache.shared.removeAllCachedResponses()
+		DataLoader.sharedUrlCache.removeAllCachedResponses()
 		HTTPCookieStorage.shared.removeCookies(since: .distantPast)
 		(ImagePipeline.shared.configuration.dataCache as? DataCache)?.removeAll()
 		ImagePipeline.shared.configuration.imageCache?.removeAll()
+		// Live caches first, then the files they left behind, which is what Storage measures.
+		StorageScanner.purge(contentsOf: StorageScanner.cachesDirectory)
 	}
 
 	nonisolated static func purgeTemporary() {
@@ -421,7 +424,7 @@ private enum StorageScanner {
 		)
 	}
 
-	private static var cachesDirectory: URL {
+	static var cachesDirectory: URL {
 		fm.urls(for: .cachesDirectory, in: .userDomainMask)[0]
 	}
 
