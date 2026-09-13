@@ -162,6 +162,37 @@ extension SourceAppsTableRepresentableView.Coordinator {
                     actions.append(appStoreAction)
                 }
 
+                // Maintainer conveniences. The icon URL and the bundle identifier
+                // are what a repository entry is actually made of, and reading
+                // them off a row beats digging them out of the source JSON.
+                var copyActions: [UIAction] = []
+
+                if let iconURL = entry.app.iconURL {
+                    copyActions.append(UIAction(
+                        title: .localized("Copy Icon URL"),
+                        image: UIImage(systemName: "photo.on.rectangle")
+                    ) { _ in
+                        UIPasteboard.general.string = iconURL.absoluteString
+                    })
+                }
+
+                if let bundleId = entry.app.id, !bundleId.isEmpty {
+                    copyActions.append(UIAction(
+                        title: .localized("Copy Bundle ID"),
+                        image: UIImage(systemName: "number")
+                    ) { _ in
+                        UIPasteboard.general.string = bundleId
+                    })
+                }
+
+                if !copyActions.isEmpty {
+                    actions.append(UIMenu(
+                        title: .localized("Copy"),
+                        image: UIImage(systemName: "doc.on.doc"),
+                        children: copyActions
+                    ))
+                }
+
                 actions.append(contentsOf: [downloadsMenu, versionsMenu])
 
                 // Ignore/resume update checks — only for installed apps; placed at the bottom of the menu.
