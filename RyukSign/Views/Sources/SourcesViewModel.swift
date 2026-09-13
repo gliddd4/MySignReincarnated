@@ -129,22 +129,35 @@ final class SourcesViewModel: ObservableObject {
 		// Disk cache first: render every repository we already have before the
 		// network is touched, so a large source set is on screen immediately
 		// instead of after the slowest request.
-		var hydrated = 0
-		for item in items {
-			guard
-				let cached = SourceCache.shared.data(for: item.url),
-				let repo = try? JSONDecoder().decode(ASRepository.self, from: cached)
-			else {
-				continue
+		//
+		// The reads and the decodes happen off the main actor. They used to run
+		// right here, synchronously, one multi-megabyte body at a time — which is
+		// precisely the cost this cache exists to remove, so the cache was paying
+		// it back on the main thread before anything could draw.
+		let cachedURLs = items.map(\.url)
+		let cached: [(index: Int, repo: ASRepository)] = await Task.detached(priority: .userInitiated) {
+			cachedURLs.enumerated().compactMap { index, url in
+				guard
+					let body = SourceCache.cachedData(for: url),
+					let repo = try? JSONDecoder().decode(ASRepository.self, from: body)
+				else {
+					return nil
+				}
+				return (index, repo)
 			}
-			working[item.source] = repo
+		}.value
+
+		if !cached.isEmpty {
 			// Counts come off the cached copy too, so the browser can sort by size
 			// the moment the app launches instead of after the first refresh.
-			SourceCache.shared.recordAppCount(repo.apps.count, for: item.url)
-			hydrated += 1
-		}
-		if hydrated > 0 {
-			Logger.misc.info("fetchSources CACHE: \(hydrated, privacy: .public)/\(items.count, privacy: .public) sources rendered from disk")
+			var counts: [URL: Int] = [:]
+			for entry in cached {
+				working[items[entry.index].source] = entry.repo
+				counts[items[entry.index].url] = entry.repo.apps.count
+			}
+			SourceCache.shared.recordAppCounts(counts)
+
+			Logger.misc.info("fetchSources CACHE: \(cached.count, privacy: .public)/\(items.count, privacy: .public) sources rendered from disk")
 			self.sources = working
 		}
 
@@ -189,21 +202,43 @@ final class SourcesViewModel: ObservableObject {
 				return collected
 			}
 
+			// `items` holds NSManagedObjects, so the batch is applied here — but only
+			// the values are touched, and one sidecar write now covers the whole batch
+			// instead of one per source.
+			var counts: [URL: Int] = [:]
+			var bodies: [(URL, Data)] = []
+
 			for (idx, repo, data) in fetched {
 				guard let repo else { continue }
 				working[items[idx].source] = repo
-				SourceCache.shared.recordAppCount(repo.apps.count, for: items[idx].url)
+				counts[items[idx].url] = repo.apps.count
 				// Keep the newest successful body for the next cold start.
 				if let data {
-					SourceCache.shared.store(data, for: items[idx].url)
+					bodies.append((items[idx].url, data))
 				}
+			}
+
+			SourceCache.shared.recordAppCounts(counts)
+
+			// The bodies are only needed on the next launch, so they go to disk off
+			// the main actor rather than stalling the rows that are about to appear.
+			if !bodies.isEmpty {
+				await Task.detached(priority: .utility) {
+					for (url, data) in bodies {
+						SourceCache.write(data, for: url)
+					}
+				}.value
 			}
 
 			// Publish progress (grows, never empties).
 			self.sources = working
 		}
 
-		SourceCache.shared.prune()
+		// Directory-wide maintenance off the main actor: it stats every cached file
+		// and has nothing to do with what the user is looking at.
+		await Task.detached(priority: .background) {
+			SourceCache.prune()
+		}.value
 
 		Logger.misc.info("fetchSources DONE: \(working.count, privacy: .public)/\(items.count, privacy: .public) loaded")
 	}

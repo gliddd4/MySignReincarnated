@@ -38,7 +38,11 @@ final class RepositoryIconStore: ObservableObject {
 	}
 
 	private init() {
-		_loadFromDisk()
+		// Reading and decoding every cached icon is filesystem and image work, and
+		// this store is first touched during launch. Doing it inline meant the
+		// first paint waited on the disk, so it runs in the background and rows
+		// fall back to the repository's declared icon until it lands.
+		_loadFromDiskInBackground()
 	}
 
 	// MARK: - Read
@@ -105,9 +109,18 @@ final class RepositoryIconStore: ObservableObject {
 			guard let image else { return }
 			self.images[key] = image
 
-			guard let data = image.pngData() else { return }
-			try? FileManager.default.createDirectory(at: self._directory, withIntermediateDirectories: true)
-			try? data.write(to: self._location(for: key), options: .atomic)
+			// Encoding and writing are the expensive half of resolving an icon and
+			// only matter on the next launch, so they do not get to stall the row
+			// that is animating in behind them.
+			let destination = self._location(for: key)
+			DispatchQueue.global(qos: .utility).async {
+				guard let data = image.pngData() else { return }
+				try? FileManager.default.createDirectory(
+					at: destination.deletingLastPathComponent(),
+					withIntermediateDirectories: true
+				)
+				try? data.write(to: destination, options: .atomic)
+			}
 		}
 	}
 
@@ -137,26 +150,42 @@ final class RepositoryIconStore: ObservableObject {
 		}.resume()
 	}
 
-	private func _loadFromDisk() {
-		guard let contents = try? FileManager.default.contentsOfDirectory(
-			at: _directory,
-			includingPropertiesForKeys: nil
-		) else {
-			return
-		}
+	/// Reads every cached icon off the main actor, then publishes them in one go.
+	///
+	/// The body of this closure deliberately never touches `self`: the class is
+	/// main-actor isolated, so it is handed a plain directory URL instead.
+	private func _loadFromDiskInBackground() {
+		let directory = _directory
 
-		for url in contents {
-			guard
-				let data = try? Data(contentsOf: url),
-				let image = UIImage(data: data)
-			else {
-				continue
+		DispatchQueue.global(qos: .utility).async {
+			var loaded: [String: UIImage] = [:]
+
+			if let contents = try? FileManager.default.contentsOfDirectory(
+				at: directory,
+				includingPropertiesForKeys: nil
+			) {
+				for url in contents {
+					guard
+						let data = try? Data(contentsOf: url),
+						let image = UIImage(data: data)
+					else {
+						continue
+					}
+					loaded[url.deletingPathExtension().lastPathComponent] = image
+				}
 			}
-			images[url.deletingPathExtension().lastPathComponent] = image
-		}
 
-		if !images.isEmpty {
-			_logger.debug("loaded \(self.images.count, privacy: .public) cached repository icons")
+			guard !loaded.isEmpty else { return }
+
+			DispatchQueue.main.async { [weak self] in
+				guard let self else { return }
+				// A row may have resolved one of these while we were reading; the
+				// freshly resolved copy wins over the one off disk.
+				for (key, image) in loaded where self.images[key] == nil {
+					self.images[key] = image
+				}
+				self._logger.debug("loaded \(self.images.count, privacy: .public) cached repository icons")
+			}
 		}
 	}
 
