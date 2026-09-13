@@ -7,10 +7,14 @@
 import SwiftUI
 
 struct VariedTabbarView: View {
+	@AppStorage("Feather.tabBarStyle") private var _style: TabBarStyle = .system
+
 	init() {}
 	
 	var body: some View {
-		if #available(iOS 18, *) {
+		if _style == .glassSwitcher {
+			GlassTabSwitcherView()
+		} else if #available(iOS 18, *) {
 			ExtendedTabbarView()
 		} else {
 			TabbarView()

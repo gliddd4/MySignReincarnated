@@ -12,9 +12,23 @@ import NimbleViews
 // MARK: - View
 struct TabBarSettingsView: View {
 	@ObservedObject private var _prefs = TabBarPreferences.shared
+	@AppStorage("Feather.tabBarStyle") private var _style: TabBarStyle = .system
 
 	var body: some View {
 		NBList(.localized("Tab Bar"), type: .list) {
+			NBSection(.localized("Style")) {
+				Picker(selection: $_style) {
+					ForEach(TabBarStyle.allCases) { style in
+						Label(style.title, systemImage: style.icon).tag(style)
+					}
+				} label: {
+					Label(.localized("Tab Bar Style"), systemImage: "rectangle.lefthalf.inset.filled")
+				}
+				.pickerStyle(.menu)
+			} footer: {
+				Text(.localized("The glass switcher is a collapsible rail on the left edge, drawn with Liquid Glass on iOS 26. It shows your default tabs; Certificates and Files stay reachable from Settings."))
+			}
+
 			NBSection(.localized("Default Launch Tab")) {
 				Picker(selection: $_prefs.defaultLaunch) {
 					ForEach(_prefs.visibleTabs, id: \.self) { tab in
