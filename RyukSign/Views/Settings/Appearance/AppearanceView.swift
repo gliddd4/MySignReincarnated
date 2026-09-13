@@ -128,7 +128,9 @@ struct AppearanceView: View {
 				Text(.localized("Tactile and audio feedback for taps, toggles and completed operations. Choosing a sound style plays a preview."))
 			}
 		}
-		.onChange(of: _feedback.soundStyle) { _, _ in
+		// Single-parameter closure: the two-parameter `onChange` is iOS 17 and the
+		// app target is iOS 16.
+		.onChange(of: _feedback.soundStyle) { _ in
 			_feedback.previewSound()
 		}
 		.onChange(of: _userIntefacerStyle) { value in

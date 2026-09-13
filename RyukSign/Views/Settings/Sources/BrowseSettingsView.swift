@@ -45,14 +45,16 @@ struct BrowseSettingsView: View {
 				Text(.localized("Shows \"1 year ago\" instead of \"1 yr. ago\" next to a release version."))
 			}
 		}
-		.onChange(of: _disablesTintFallback) { _, disabled in
+		// Single-parameter closures throughout: the two-parameter `onChange` is
+		// iOS 17 and the app target is iOS 16.
+		.onChange(of: _disablesTintFallback) { disabled in
 			// A fallback that is switched off should not leave its results behind.
 			if disabled {
 				IconTintCache.shared.clear()
 				FeedbackManager.shared.success()
 			}
 		}
-		.onChange(of: _disablesIconFallback) { _, disabled in
+		.onChange(of: _disablesIconFallback) { disabled in
 			if disabled {
 				RepositoryIconStore.shared.clear()
 				FeedbackManager.shared.success()
