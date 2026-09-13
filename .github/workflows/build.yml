@@ -12,12 +12,12 @@ on:
 permissions:
   contents: read
 
-# Queued, not cancelled. With cancel-in-progress a push that lands while a build
-# is running kills that build before it reports, so a broken commit disappears
-# behind the next push instead of being caught. Runs now always finish.
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: false
+# Deliberately no `concurrency` block. With one, a push that arrives while a
+# build is running either cancels that build outright (cancel-in-progress: true)
+# or, at best, has its own queued run discarded when the next push arrives,
+# because a concurrency group only ever holds one waiting run. A commit that
+# never reports is worse than no build at all, so every push gets its own run
+# and every run finishes.
 
 jobs:
   build:
