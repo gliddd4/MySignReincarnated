@@ -44,9 +44,14 @@ struct SourceAppsCellView: View {
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.font(.subheadline)
 					.foregroundStyle(.secondary)
+					.multilineTextAlignment(.leading)
 					.padding(.top, 2)
-					// Bounded, so one verbose description cannot stretch the row.
-					.lineLimit(2)
+					// Runs to as many lines as it needs, across the full width of the row —
+					// under the icon, the name and the download button, rather than being
+					// clamped above them. `fixedSize` on the vertical axis is what stops the
+					// self-sizing cell compressing it back down. "Standard" cell appearance
+					// and the Browse setting both still turn descriptions off entirely.
+					.fixedSize(horizontal: false, vertical: true)
 			}
 		}
 	}
