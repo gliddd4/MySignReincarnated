@@ -50,12 +50,8 @@ struct DownloadsSettingsView: View {
 		NBList(.localized("Downloads")) {
 			NBSection(.localized("History")) {
 				Toggle(.localized("Switch to Library on Download"), isOn: $_switchTabOnDownload)
-
-				NavigationLink(destination: DownloadHistoryView()) {
-					Label(.localized("Download History"), systemImage: "clock.arrow.circlepath")
-				}
 			} footer: {
-				Text(.localized("Keep a log of everything you download, with the app icon and the date it was saved. Switching tabs takes you to the Library as soon as a download starts."))
+				Text(.localized("Switching tabs takes you to the Library as soon as a download starts. The log of past downloads lives in Settings > MySign."))
 			}
 
 			NBSection(.localized("Display Mode")) {

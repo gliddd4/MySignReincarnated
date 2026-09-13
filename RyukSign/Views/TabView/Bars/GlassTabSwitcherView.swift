@@ -4,18 +4,22 @@
 //
 //  MySign's edge tab switcher, rebuilt on Apple's real Liquid Glass.
 //
-//  MySign pinned a collapsible vertical rail to the leading edge of the screen and
-//  hand-rolled its "glass" out of VariableBlur plus an ultra-thin material at 30%
-//  opacity. Two years later iOS 26 shipped the same idea with a real material, so
-//  this keeps the interaction and geometry exactly as MySign had it — 44pt targets,
-//  10pt gaps, a 20x100 drag handle, 15pt/25pt drag thresholds, tap and long-press
-//  shortcuts, and a 10 second auto-hide — and swaps the hand-rolled blur for
-//  `glassEffect(_:in:)`, with MySign's material recipe kept as the pre-26 fallback.
+//  MySign pinned a collapsible vertical rail to the screen edge and hand-rolled
+//  its "glass" out of VariableBlur plus an ultra-thin material at 30% opacity, two
+//  years before iOS 26 shipped the real material. This keeps the interaction —
+//  10pt/25pt drag thresholds, a 20x100 drag handle, tap and long-press shortcuts,
+//  and a 10 second auto-hide — and drops the hand-rolled blur for
+//  `glassEffect(_:in:)`, with MySign's own recipe kept as the pre-26 fallback.
 //
-//  The arrow is MySign's chevron indicator. MySign swapped `chevron.right` for
-//  `chevron.left` in a `Group`, which cannot animate — a symbol is inserted and
-//  removed. Here it is one chevron that rotates to the state and leans with the
-//  drag, so the arrow actually moves the way MySign's swap implied.
+//  Geometry notes, because the spacing is deliberately tied together:
+//  the rail insets and the gap between rows are chosen so the space *around* an
+//  icon is the same in every direction. The glyph sits in a slightly larger box,
+//  so `_slack` is added to the label's outer edge and doubled into `_itemGap`.
+//
+//  The arrow is MySign's chevron indicator. MySign flipped it by swapping
+//  `chevron.right` for `chevron.left` inside a `Group`, which cannot animate — a
+//  symbol is inserted and removed. Here it is one chevron that rotates to the
+//  rail's state and leans with the drag, so the arrow moves the way the swap implied.
 //
 
 import SwiftUI
@@ -38,7 +42,7 @@ enum TabBarStyle: String, CaseIterable, Identifiable {
 	var icon: String {
 		switch self {
 		case .system:        return "rectangle.bottomthird.inset.filled"
-		case .glassSwitcher: return "rectangle.lefthalf.inset.filled"
+		case .glassSwitcher: return "rectangle.righthalf.inset.filled"
 		}
 	}
 }
@@ -54,22 +58,45 @@ struct GlassTabSwitcherView: View {
 	@AppStorage("Feather.glassSwitcherExpanded") private var _isExpanded: Bool = false
 	@AppStorage("Feather.glassSwitcherHidden") private var _isHidden: Bool = false
 
-	@Namespace private var _glass
 	@State private var _dragOffset: CGFloat = 0
 	@State private var _isDragging = false
 	@State private var _isHandleAutoHidden = false
 	/// Bumped on every interaction; the auto-hide task is keyed on it, so touching
-	/// the handle restarts MySign's 10 second timer without any timer bookkeeping.
+	/// the rail restarts MySign's 10 second timer without any timer bookkeeping.
 	@State private var _interaction = UUID()
 
-	/// MySign's geometry, kept verbatim so the rail reads the same.
-	private let _target: CGFloat = 44
-	private let _itemGap: CGFloat = 10
-	private let _railPadding: CGFloat = 8
+	// MARK: Geometry
+	//
+	// The rail lives against the trailing edge, so the label sits to the left of its
+	// icon: the icon stays put as the rail grows leftwards, exactly as MySign's icons
+	// stayed put while its rail grew rightwards.
+
+	/// Point size of the glyph itself.
+	private let _glyph: CGFloat = 18
+	/// The box the glyph is centred in. Slightly larger than the glyph, which is what
+	/// creates `_slack` and lets the spacer maths below come out even.
+	private let _iconBox: CGFloat = 26
+	/// Reserve around every icon, in every direction.
+	private let _padding: CGFloat = 10
+	/// Icon to label.
+	private let _labelSpacing: CGFloat = 10
+	/// Between rows. Paired with `_slack` this makes the vertical gap between two
+	/// icons equal the horizontal gap from the rail's edge to an icon.
+	private let _itemGap: CGFloat = 6
+	/// Grows each row's touch target to the full pitch without moving anything.
+	private let _hitPad: CGFloat = 3
 	private let _handle: CGSize = .init(width: 20, height: 100)
 	private let _handleHitWidth: CGFloat = 40
 	private let _corner: CGFloat = 22
 	private let _autoHideDelay: Duration = .seconds(10)
+	/// Centre the rail a quarter of the way down from the top instead of the middle.
+	private let _verticalShift: CGFloat = 0.25
+
+	/// Half the difference between the glyph and its box — the extra space that has to
+	/// be mirrored on the label's outer edge for the row to look evenly padded.
+	private var _slack: CGFloat {
+		(_iconBox - _glyph) / 2
+	}
 
 	private var _tabs: [TabEnum] {
 		_prefs.visibleTabs
@@ -80,12 +107,15 @@ struct GlassTabSwitcherView: View {
 	}
 
 	var body: some View {
-		ZStack(alignment: .leading) {
-			TabEnum.view(for: _selected)
-				.environmentObject(_selection)
-				.frame(maxWidth: .infinity, maxHeight: .infinity)
+		GeometryReader { geometry in
+			ZStack(alignment: .trailing) {
+				TabEnum.view(for: _selected)
+					.environmentObject(_selection)
+					.frame(width: geometry.size.width, height: geometry.size.height)
 
-			_switcher
+				_switcher
+					.offset(y: -geometry.size.height * _verticalShift)
+			}
 		}
 	}
 
@@ -93,13 +123,13 @@ struct GlassTabSwitcherView: View {
 
 	private var _switcher: some View {
 		HStack(spacing: 0) {
-			_rail
 			_handleStrip
+			_rail
 		}
-		.padding(.leading, 10)
-		.offset(x: _isHidden ? -260 : 0)
-		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-		.overlay(alignment: .leading) { _edgeSwipeStrip }
+		.padding(.trailing, 10)
+		.offset(x: _isHidden ? 260 : 0)
+		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+		.overlay(alignment: .trailing) { _edgeSwipeStrip }
 		.animation(.spring(response: 0.4, dampingFraction: 0.8), value: _isHidden)
 		.animation(.spring(response: 0.3, dampingFraction: 0.7), value: _isDragging)
 		.animation(.easeInOut(duration: 0.3), value: _isHandleAutoHidden)
@@ -115,12 +145,12 @@ struct GlassTabSwitcherView: View {
 
 	private var _rail: some View {
 		SwitcherGlassContainer(spacing: _itemGap) {
-			VStack(alignment: .leading, spacing: _itemGap) {
+			VStack(alignment: .trailing, spacing: _itemGap) {
 				ForEach(_tabs, id: \.self) { tab in
 					_item(for: tab)
 				}
 			}
-			.padding(_railPadding)
+			.padding(_padding)
 			.modifier(SwitcherGlass(shape: RoundedRectangle(cornerRadius: _corner, style: .continuous)))
 		}
 		.offset(x: _dragOffset)
@@ -135,40 +165,34 @@ struct GlassTabSwitcherView: View {
 		return Button {
 			_select(tab)
 		} label: {
-			HStack(spacing: 12) {
-				ZStack {
-					if isSelected {
-						Color.clear
-							.frame(width: _target, height: _target)
-							.modifier(
-								SwitcherGlass(
-									shape: Circle(),
-									tint: Color.userTint.opacity(0.75),
-									interactive: true,
-									morphID: "ryuk.glassSwitcher.selection",
-									namespace: _glass
-								)
-							)
-					}
-
-					Image(systemName: tab.icon)
-						.font(.system(size: 18, weight: isSelected ? .semibold : .medium))
-						.foregroundStyle(isSelected ? Color.userTint : Color.primary)
-						.frame(width: _target, height: _target)
-				}
-				.overlay(alignment: .topTrailing) { _badge(for: tab) }
-
+			HStack(spacing: _labelSpacing) {
 				if _isExpanded {
 					Text(tab.title)
 						.font(.system(size: 16, weight: .medium))
 						.foregroundStyle(isSelected ? Color.userTint : Color.primary)
 						.fixedSize()
+						// Mirrors the icon's own slack so the rail is inset evenly on
+						// both sides of the row.
+						.padding(.leading, _slack)
 						.transition(.move(edge: .leading).combined(with: .opacity))
 				}
+
+				Image(systemName: tab.icon)
+					.font(.system(size: _glyph, weight: isSelected ? .semibold : .medium))
+					.foregroundStyle(isSelected ? Color.userTint : Color.primary)
+					.frame(width: _iconBox, height: _iconBox)
+					.overlay(alignment: .topTrailing) { _badge(for: tab) }
 			}
+			.frame(height: _iconBox)
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
+		// A row is only as tall as its icon, so the touch target is grown to the full
+		// pitch and the layout is pulled back — the hit area covers the gap between
+		// rows without adding any visible space.
+		.padding(.vertical, _hitPad)
+		.contentShape(Rectangle())
+		.padding(.vertical, -_hitPad)
 		.accessibilityLabel(tab.title)
 	}
 
@@ -224,8 +248,8 @@ struct GlassTabSwitcherView: View {
 		.onLongPressGesture(minimumDuration: 0.3) { _toggleFromHandle(light: false) }
 	}
 
-	/// MySign's chevron indicator, with the flip it implied made real: the arrow
-	/// rotates to the rail's state and leans with the drag as it is pulled.
+	/// On a trailing rail the arrow points the way the rail has to be dragged to
+	/// change state: left to pull it out, right to push it back.
 	private var _arrow: some View {
 		Image(systemName: "chevron.right")
 			.font(.system(size: 12, weight: .bold))
@@ -236,14 +260,18 @@ struct GlassTabSwitcherView: View {
 	}
 
 	private var _arrowAngle: Angle {
-		let base: Double = _isExpanded ? 180 : 0
+		let base: Double = _isExpanded ? 0 : 180
 		guard _isDragging else { return .degrees(base) }
 		// Lean up to 45 degrees either way while the handle is being pulled.
-		let lean = min(max(Double(_dragOffset) / 60, -0.5), 0.5) * 90
+		let lean = min(max(Double(-_dragOffset) / 60, -0.5), 0.5) * 90
 		return .degrees(base + lean)
 	}
 
 	// MARK: Edge reveal
+	//
+	// Only live while the rail is actually off screen. It used to also arm itself
+	// whenever the handle auto-hid, which laid a 60pt invisible strip straight over
+	// the rail — that is what was eating taps on the icons.
 
 	private var _edgeSwipeStrip: some View {
 		Color.clear
@@ -253,16 +281,16 @@ struct GlassTabSwitcherView: View {
 			.gesture(
 				DragGesture(minimumDistance: 5)
 					.onEnded { value in
-						guard value.translation.width > 15 else { return }
+						guard value.translation.width < -15 else { return }
 						withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-							if _isHidden { _isHidden = false }
+							_isHidden = false
 							_isHandleAutoHidden = false
 						}
 						_interaction = UUID()
 						FeedbackManager.shared.tap(.medium)
 					}
 			)
-			.allowsHitTesting(_isHidden || _isHandleAutoHidden)
+			.allowsHitTesting(_isHidden)
 	}
 
 	// MARK: Gestures
@@ -271,6 +299,7 @@ struct GlassTabSwitcherView: View {
 		DragGesture(minimumDistance: 10)
 			.onChanged { value in
 				_isDragging = true
+				_wake()
 				if !_isExpanded {
 					_dragOffset = value.translation.width * 0.5
 				}
@@ -283,10 +312,10 @@ struct GlassTabSwitcherView: View {
 				withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
 					_dragOffset = 0
 
-					if distance > 20 || velocity > 40 {
+					if distance < -20 || velocity < -40 {
 						_isExpanded = true
 						FeedbackManager.shared.tap(.medium)
-					} else if distance < -20 || velocity < -40 {
+					} else if distance > 20 || velocity > 40 {
 						if _isExpanded {
 							_isExpanded = false
 						} else {
@@ -304,7 +333,7 @@ struct GlassTabSwitcherView: View {
 			.onChanged { value in
 				_isDragging = true
 				_dragOffset = value.translation.width * 0.3
-				_interaction = UUID()
+				_wake()
 			}
 			.onEnded { value in
 				_isDragging = false
@@ -314,14 +343,14 @@ struct GlassTabSwitcherView: View {
 				withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
 					_dragOffset = 0
 
-					if distance > 15 || velocity > 25 {
+					if distance < -15 || velocity < -25 {
 						if _isHidden {
 							_isHidden = false
 						} else {
 							_isExpanded = true
 						}
 						FeedbackManager.shared.tap(.medium)
-					} else if distance < -15 || velocity < -25 {
+					} else if distance > 15 || velocity > 25 {
 						if _isExpanded {
 							_isExpanded = false
 						} else {
@@ -335,7 +364,7 @@ struct GlassTabSwitcherView: View {
 	}
 
 	private func _toggleFromHandle(light: Bool) {
-		_interaction = UUID()
+		_wake()
 
 		withAnimation(.spring(response: light ? 0.3 : 0.2, dampingFraction: light ? 0.7 : 0.6)) {
 			if light {
@@ -369,10 +398,19 @@ struct GlassTabSwitcherView: View {
 		}
 	}
 
+	/// Any interaction keeps the handle on screen and restarts its idle timer.
+	private func _wake() {
+		_interaction = UUID()
+		guard _isHandleAutoHidden else { return }
+		withAnimation(.easeInOut(duration: 0.2)) {
+			_isHandleAutoHidden = false
+		}
+	}
+
 	// MARK: Selection
 
 	private func _select(_ tab: TabEnum) {
-		_interaction = UUID()
+		_wake()
 		FeedbackManager.shared.tap(.light)
 
 		withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -395,23 +433,11 @@ private struct SwitcherGlass<S: Shape>: ViewModifier {
 	let shape: S
 	var tint: Color?
 	var interactive: Bool = false
-	var morphID: String?
-	var namespace: Namespace.ID?
 
 	@ViewBuilder
 	func body(content: Content) -> some View {
 		if #available(iOS 26.0, *) {
-			if let morphID, let namespace {
-				content
-					.glassEffect(_glass, in: shape)
-					.glassEffectID(morphID, in: namespace)
-			} else {
-				content.glassEffect(_glass, in: shape)
-			}
-		} else if let morphID, let namespace {
-			content
-				.background { _fallback }
-				.matchedGeometryEffect(id: morphID, in: namespace)
+			content.glassEffect(_glass, in: shape)
 		} else {
 			content.background { _fallback }
 		}
@@ -434,8 +460,8 @@ private struct SwitcherGlass<S: Shape>: ViewModifier {
 	}
 }
 
-/// Sibling glass shapes only blend and morph inside a container, which is iOS 26
-/// only — so this passes content straight through on older systems.
+/// Sibling glass shapes only blend inside a container, which is iOS 26 only — so
+/// this passes content straight through on older systems.
 private struct SwitcherGlassContainer<Content: View>: View {
 	let spacing: CGFloat
 	@ViewBuilder let content: () -> Content

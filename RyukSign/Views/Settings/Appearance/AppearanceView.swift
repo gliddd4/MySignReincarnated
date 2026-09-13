@@ -40,8 +40,6 @@ struct AppearanceView: View {
 	@AppStorage("Feather.userTintColor")
 	private var _selectedColorHex: String = "#848ef9"
 
-	@ObservedObject private var _feedback = FeedbackManager.shared
-
 	private var _tintColorBinding: Binding<Color> {
 		Binding(
 			get: { Color(hex: _selectedColorHex) },
@@ -116,22 +114,6 @@ struct AppearanceView: View {
 				}
 			}
 
-			NBSection(.localized("Feedback")) {
-				Toggle(.localized("Haptics"), isOn: $_feedback.hapticsEnabled)
-				Toggle(.localized("Sounds"), isOn: $_feedback.soundsEnabled)
-				Picker(.localized("Sound Style"), selection: $_feedback.soundStyle) {
-					ForEach(FeedbackManager.SoundStyle.allCases) { style in
-						Text(style.title).tag(style)
-					}
-				}
-			} footer: {
-				Text(.localized("Tactile and audio feedback for taps, toggles and completed operations. Choosing a sound style plays a preview."))
-			}
-		}
-		// Single-parameter closure: the two-parameter `onChange` is iOS 17 and the
-		// app target is iOS 16.
-		.onChange(of: _feedback.soundStyle) { _ in
-			_feedback.previewSound()
 		}
 		.onChange(of: _userIntefacerStyle) { value in
 			if let style = UIUserInterfaceStyle(rawValue: value) {

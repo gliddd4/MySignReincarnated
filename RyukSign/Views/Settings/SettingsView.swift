@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("feather.selectedCert") private var _storedSelectedCert: Int = 0
     @State private var _currentIcon: String? = UIApplication.shared.alternateIconName
     @ObservedObject private var _selfUpdate = SelfUpdateManager.shared
+    @ObservedObject private var _feedback = FeedbackManager.shared
 
     // MARK: Fetch
     @FetchRequest(
@@ -86,6 +87,35 @@ struct SettingsView: View {
                     Text(.localized("Add and manage certificates used for signing applications."))
                 }
 
+                NBSection(.localized("MySign")) {
+                    NavigationLink(destination: BrowseSettingsView()) {
+                        Label(.localized("Browse"), systemImage: "safari")
+                    }
+                    NavigationLink(destination: SourceCacheSettingsView()) {
+                        Label(.localized("Repository Cache"), systemImage: "cylinder.split.1x2")
+                    }
+                    NavigationLink(destination: DefaultTweaksView()) {
+                        Label(.localized("Default Tweaks"), systemImage: "checklist")
+                    }
+                    NavigationLink(destination: DownloadHistoryView()) {
+                        Label(.localized("Download History"), systemImage: "clock.arrow.circlepath")
+                    }
+                    Toggle(.localized("Haptics"), isOn: $_feedback.hapticsEnabled)
+                    Toggle(.localized("Sounds"), isOn: $_feedback.soundsEnabled)
+                    Picker(.localized("Sound Style"), selection: $_feedback.soundStyle) {
+                        ForEach(FeedbackManager.SoundStyle.allCases) { style in
+                            Text(style.title).tag(style)
+                        }
+                    }
+                } footer: {
+                    Text(.localized("Carried over from MySign: the repository browser options and the caches that let it open huge sources quickly, default tweak injection, the download log, and app-wide haptic and sound feedback."))
+                }
+                // Single-parameter closure: the two-parameter `onChange` is iOS 17 and
+                // the app target is iOS 16.
+                .onChange(of: _feedback.soundStyle) { _ in
+                    _feedback.previewSound()
+                }
+
                 NBSection(.localized("Features")) {
                     NavigationLink(destination: ConfigurationView()) {
                         Label(.localized("Signing Options"), systemImage: "signature")
@@ -95,17 +125,8 @@ struct SettingsView: View {
                     } label: {
                         Label(.localized("Tweaks"), systemImage: "wrench.and.screwdriver")
                     }
-                    NavigationLink(destination: DefaultTweaksView()) {
-                        Label(.localized("Default Tweaks"), systemImage: "checklist")
-                    }
                     NavigationLink(destination: FilesCompressionView()) {
                         Label(.localized("Files & Compression"), systemImage: "archivebox")
-                    }
-                    NavigationLink(destination: BrowseSettingsView()) {
-                        Label(.localized("Browse"), systemImage: "safari")
-                    }
-                    NavigationLink(destination: SourceCacheSettingsView()) {
-                        Label(.localized("Repository Cache"), systemImage: "cylinder.split.1x2")
                     }
                     NavigationLink(destination: InstallationView()) {
                         Label(.localized("Installation"), systemImage: "arrow.down.app")
