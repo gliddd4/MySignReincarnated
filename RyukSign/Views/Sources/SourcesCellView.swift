@@ -283,7 +283,7 @@ struct RepositoryDebugView: View {
 
 	private var _catalogURL: String {
 		guard let url = source.sourceURL else { return "(none)" }
-		return RyukSignAPI.catalogURL(for: url)
+		return RyukSignAPI.catalogURL(for: url).absoluteString
 	}
 
 	private var _cacheSize: String {
@@ -309,7 +309,7 @@ struct RepositoryDebugView: View {
 
 	var body: some View {
 		NBNavigationView(.localized("Debug Info"), displayMode: .inline) {
-			NBList {
+			NBList(.localized("Debug Info"), displayMode: .inline) {
 				NBSection(.localized("Identity")) {
 					_DetailRow(title: .localized("Name"), value: source.name ?? "(none)")
 					_DetailRow(title: .localized("Identifier"), value: _identifier)
@@ -350,9 +350,14 @@ private struct _DetailRow: View {
 			Text(title)
 				.font(.caption)
 				.foregroundStyle(.secondary)
-			Text(value)
-				.font(.footnote.monospaced())
-				.textSelection(copyable ? .enabled : .disabled)
+			if copyable {
+				Text(value)
+					.font(.footnote.monospaced())
+					.textSelection(.enabled)
+			} else {
+				Text(value)
+					.font(.footnote.monospaced())
+			}
 		}
 		.padding(.vertical, 2)
 	}
