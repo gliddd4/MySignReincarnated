@@ -381,8 +381,14 @@ struct SourcesAddView: View {
 					HStack(spacing: 2) {
 						FRIconCellView(
 							title: source.name ?? .localized("Unknown"),
-							subtitle: url.absoluteString,
-							iconUrl: source.currentIconURL
+							// The URL used to sit here. The name already identifies the
+							// repository, so the space is better spent on how many apps
+							// it actually carries.
+							subtitle: .localized("%lld apps", arguments: source.apps.count),
+							iconUrl: source.currentIconURL,
+							size: 30,
+							spacing: 10,
+							lineLimit: 1
 						)
 						Button {
 							Storage.shared.addSource(url, repository: source) { error in

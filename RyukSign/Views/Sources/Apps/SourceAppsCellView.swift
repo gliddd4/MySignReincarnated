@@ -22,7 +22,12 @@ struct SourceAppsCellView: View {
 				FRIconCellView(
 					title: app.currentName,
 					subtitle: Self.appDescription(app: app),
-					iconUrl: app.iconURL
+					iconUrl: app.iconURL,
+					// 30pt and a single text line: this list can hold 15,000 apps, so
+					// every row has to stay the same short height all the way down.
+					size: 30,
+					spacing: 10,
+					lineLimit: 1
 				)
 				.overlay(alignment: .bottomLeading) {
 					if let iconURL = source.currentIconURL {
@@ -45,6 +50,8 @@ struct SourceAppsCellView: View {
 					.font(.subheadline)
 					.foregroundStyle(.secondary)
 					.padding(.top, 2)
+					// Bounded, so one verbose description cannot stretch the row.
+					.lineLimit(2)
 			}
 		}
 	}

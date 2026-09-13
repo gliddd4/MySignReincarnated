@@ -11,7 +11,6 @@ import NimbleViews
 
 // MARK: - View
 struct SourcesView: View {
-	@Environment(\.horizontalSizeClass) private var horizontalSizeClass
 	@Environment(\.scenePhase) private var scenePhase
 	#if !NIGHTLY && !DEBUG
 	@AppStorage("Feather.shouldStar") private var _shouldStar: Int = 0
@@ -228,21 +227,16 @@ struct SourcesView: View {
 
 	@ViewBuilder
 	private var allRepositoriesLabel: some View {
-		let isRegular = horizontalSizeClass != .compact
-		HStack(spacing: 18) {
-			Image("Repositories").appIconStyle()
-			NBTitleWithSubtitleView(
-				title: .localized("All Repositories"),
-				subtitle: .localized("See all apps from your sources")
-			)
+		// Same shape as a repository row, so the list reads as one continuous
+		// column instead of a card sitting on top of it. The subtitle only
+		// restated the title, and it cost the row its second line.
+		HStack(spacing: 10) {
+			Image("Repositories")
+				.appIconStyle(size: 30)
+			Text(.localized("All Repositories"))
+				.font(.subheadline.weight(.semibold))
+			Spacer(minLength: 0)
 		}
-		.padding(isRegular ? 12 : 0)
-		.background(
-			isRegular
-			? RoundedRectangle(cornerRadius: 18, style: .continuous)
-				.fill(Color(.quaternarySystemFill))
-			: nil
-		)
 	}
 
 	@ViewBuilder

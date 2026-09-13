@@ -4,12 +4,14 @@
 //
 //  Created by samara on 1.05.2025.
 //
-//  Reworked for the MySign merge:
+//  Reworked for the MySign merge, then made compact:
 //   • the repository URL is gone from the row — it ate the width that used to
 //     make only ~20 repositories visible, and the name already identifies it
-//   • the subtitle shows what is actually useful: how many apps it carries and
-//     when it was last refreshed (cached on disk by SourceCache)
-//   • a colour pulled from the repository's own icon tints the row
+//   • one line per repository: 30pt icon, name, app count. A second line for the
+//     last-refresh date cost every row a third of its height in a list whose
+//     only job is scanning, so that date lives in Debug Info instead
+//   • a colour pulled from the repository's own icon tints the app count and the
+//     disclosure arrow, which is what makes a long list scannable
 //   • favourites, cached JSON, debug info and a tint refresh in the context menu
 //
 
@@ -22,7 +24,6 @@ import NukeUI
 
 // MARK: - View
 struct SourcesCellView: View {
-	@Environment(\.horizontalSizeClass) private var horizontalSizeClass
 	@Environment(\.dismiss) private var dismiss
 
 	var source: AltSource
@@ -84,64 +85,26 @@ struct SourcesCellView: View {
 		return urls
 	}
 
-	/// "1,204 apps · Aug 3, 2026" — or nothing until we know, so the row stays clean.
-	private var _subtitle: String {
-		guard let url = source.sourceURL else { return "" }
-
-		var parts: [String] = []
-		if let count = _cache.appCount(for: url) {
-			parts.append(.localized("%lld apps", arguments: count))
-		}
-		if let updated = _cache.lastUpdated(for: url) {
-			parts.append(updated.formatted(date: .abbreviated, time: .shortened))
-		}
-		return parts.joined(separator: " · ")
+	/// How many apps the repository carries, once the cache knows. Nil keeps the
+	/// row from drawing an empty gap while the first refresh is still running.
+	private var _appCount: Int? {
+		guard let url = source.sourceURL else { return nil }
+		return _cache.appCount(for: url)
 	}
 
 	// MARK: Body
 	var body: some View {
-		let isRegular = horizontalSizeClass != .compact
-
-		let cellContent = HStack(spacing: 12) {
-			// 40pt rather than 56pt: the row is about scanning a long list, and the
-			// icon is still unambiguous at this size.
+		// One line, no container padding: the row is the list's unit of scanning,
+		// and anything that is not the name or the count is noise at this density.
+		let cellContent = HStack(spacing: 10) {
 			_icon
-
-			NBTitleWithSubtitleView(
-				title: source.name ?? .localized("Unknown"),
-				subtitle: _subtitle,
-				linelimit: 0
-			)
+			_nameAndCount
 
 			Spacer(minLength: 0)
 
-			_appCountBadge
-
-			if _isFavorite {
-				Image(systemName: "star.fill")
-					.foregroundStyle(.yellow)
-					.font(.caption)
-			}
-			if _isPremiumSource {
-				Image(systemName: "crown.fill")
-					.foregroundStyle(.yellow)
-					.font(.caption)
-			}
-			if _isExcluded {
-				Image(systemName: "eye.slash")
-					.foregroundStyle(.secondary)
-					.font(.caption2)
-			}
-
+			_statusIcons
 			_chevron
 		}
-		.padding(isRegular ? 10 : 0)
-		.background(
-			isRegular
-			? RoundedRectangle(cornerRadius: 18, style: .continuous)
-				.fill(_tint?.opacity(0.16) ?? Color(.quaternarySystemFill))
-			: nil
-		)
 		.onAppear {
 			_isExcluded = RyukSignAPI.isSourceExcluded(_sourceIdentifier)
 			// Resolve against the same candidates the icon uses, so a repository
@@ -186,41 +149,65 @@ struct SourcesCellView: View {
 // MARK: - Extension: View (row pieces)
 extension SourcesCellView {
 	/// The cached icon when we have one, else the declared icon, else a placeholder
-	/// that the resolved fallback replaces as soon as it lands.
+	/// that the resolved fallback replaces as soon as it lands. 30pt keeps roughly
+	/// a dozen repositories on screen, which is the point of the compact row.
 	@ViewBuilder
 	private var _icon: some View {
 		if let cached = _repoIcons.image(for: _key) {
 			Image(uiImage: cached)
-				.appIconStyle(size: 40)
+				.appIconStyle(size: 30)
 		} else if let iconURL = _candidateIcons.first {
 			LazyImage(url: iconURL) { state in
 				if let image = state.image {
-					image.appIconStyle(size: 40)
+					image.appIconStyle(size: 30)
 				} else {
 					Image("App_Unknown")
-						.appIconStyle(size: 40)
+						.appIconStyle(size: 30)
 				}
 			}
 		} else {
 			Image("App_Unknown")
-				.appIconStyle(size: 40)
+				.appIconStyle(size: 30)
 		}
 	}
 
-	/// How many apps the repository carries. Compact ("1.2K") so a wide number
-	/// never squeezes the name, and tinted so it belongs to the row it sits in.
+	/// Name and app count on one line. The name truncates from the middle so the
+	/// part that tells repositories apart stays readable, and the count stays
+	/// compact so a 15,000-app repository cannot squeeze the name out of the row.
 	@ViewBuilder
-	private var _appCountBadge: some View {
-		if let url = source.sourceURL, let count = _cache.appCount(for: url) {
-			Text(count.formatted(.number.notation(.compactName)))
-				.font(.caption2.weight(.semibold))
-				.monospacedDigit()
-				.foregroundStyle(_tint ?? Color.secondary)
-				.padding(.horizontal, 7)
-				.padding(.vertical, 2)
-				.background(
-					Capsule().fill((_tint ?? Color.gray).opacity(0.18))
-				)
+	private var _nameAndCount: some View {
+		HStack(spacing: 6) {
+			Text(source.name ?? .localized("Unknown"))
+				.font(.subheadline.weight(.semibold))
+				.lineLimit(1)
+				.truncationMode(.middle)
+
+			if let count = _appCount {
+				Text(count.formatted(.number.notation(.compactName)))
+					.font(.caption)
+					.monospacedDigit()
+					.foregroundStyle(_tint ?? Color.secondary)
+			}
+		}
+	}
+
+	/// Favourite, premium and hidden badges, at the smallest size that still reads.
+	@ViewBuilder
+	private var _statusIcons: some View {
+		if _isFavorite {
+			Image(systemName: "star.fill")
+				.font(.caption2)
+				.foregroundStyle(.yellow)
+		}
+		if _isPremiumSource {
+			Image(systemName: "crown.fill")
+				.font(.caption2)
+				.foregroundStyle(.yellow)
+		}
+		if _isExcluded {
+			Image(systemName: "eye.slash")
+				.font(.caption2)
+				.foregroundStyle(.secondary)
 		}
 	}
 
@@ -228,7 +215,7 @@ extension SourcesCellView {
 	/// indicator to conflict with — this one carries the repository's colour.
 	private var _chevron: some View {
 		Image(systemName: "chevron.right")
-			.font(.caption.weight(.semibold))
+			.font(.caption2.weight(.semibold))
 			.foregroundStyle(_tint ?? Color(uiColor: .tertiaryLabel))
 	}
 }
