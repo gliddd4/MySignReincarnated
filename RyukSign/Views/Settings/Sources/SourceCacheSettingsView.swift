@@ -44,31 +44,55 @@ struct SourceCacheSettingsView: View {
 
 			NBSection(.localized("Maintenance")) {
 				Button(.localized("Refresh All Icon Colours"), systemImage: "paintpalette") {
+					FeedbackManager.shared.tap()
 					_refreshAllTints()
 				}
 
 				Button(.localized("Refresh All Icons"), systemImage: "photo.on.rectangle.angled") {
+					FeedbackManager.shared.tap()
 					_refreshAllIcons()
 				}
 
 				Button(.localized("Clear Icon Cache"), systemImage: "trash") {
+					FeedbackManager.shared.tap()
 					_icons.clear()
 					_refreshDiskSizes()
 				}
 
-				Button(.localized("Clear Repository Cache"), systemImage: "trash", role: .destructive) {
-					// `SourceCache.clear()` also drops the extracted colours and
-					// app counts, since none of them mean anything without bodies.
-					_cache.clear()
-					_refreshDiskSizes()
+				// Destructive clears are hold-to-confirm so a stray tap can't
+				// wipe the head start; the red fill sweep makes the commitment.
+				HoldToConfirm(
+					duration: 1.1,
+					fill: Color.red.opacity(0.15),
+					onComplete: {
+						_cache.clear()
+						_refreshDiskSizes()
+						FeedbackManager.shared.success()
+					}
+				) {
+					Label(.localized("Clear Repository Cache"), systemImage: "trash")
+						.frame(maxWidth: .infinity, alignment: .leading)
+						.foregroundStyle(.red)
+						.padding(.vertical, 6)
 				}
 			} footer: {
 				Text(.localized("Clearing the repository cache only costs the next load its head start; nothing about your sources or certificates is touched."))
 			}
 
 			NBSection(.localized("Counts")) {
-				Button(.localized("Forget App Counts"), systemImage: "number", role: .destructive) {
-					_cache.clearCounts()
+				HoldToConfirm(
+					duration: 1.1,
+					fill: Color.red.opacity(0.15),
+					onComplete: {
+						_cache.clearCounts()
+						_refreshDiskSizes()
+						FeedbackManager.shared.success()
+					}
+				) {
+					Label(.localized("Forget App Counts"), systemImage: "number")
+						.frame(maxWidth: .infinity, alignment: .leading)
+						.foregroundStyle(.red)
+						.padding(.vertical, 6)
 				}
 			} footer: {
 				Text(.localized("Until the next refresh, rows show no app count and the app-count sort falls back to name order."))

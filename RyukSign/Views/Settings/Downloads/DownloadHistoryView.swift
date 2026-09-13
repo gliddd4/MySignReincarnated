@@ -73,6 +73,7 @@ struct DownloadHistoryView: View {
 		) {
 			Button(.localized("Clear All"), role: .destructive) {
 				_history.clear()
+				FeedbackManager.shared.success()
 			}
 		}
 		.onAppear {

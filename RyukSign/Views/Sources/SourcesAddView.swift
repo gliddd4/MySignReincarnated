@@ -392,6 +392,7 @@ struct SourcesAddView: View {
 								} else {
 									let sourceName = source.name ?? "Repository"
 									Toast.success("Successfully added \(sourceName)")
+									FeedbackManager.shared.success()
 								}
 							}
 						} label: {
@@ -426,6 +427,7 @@ struct SourcesAddView: View {
 					switch result {
 					case .success(let sourceName):
 						Toast.success("Successfully added \(sourceName)")
+						FeedbackManager.shared.success()
 						dismiss()
 					case .failure(let error):
 						Toast.error(error.localizedDescription, duration: .sticky)

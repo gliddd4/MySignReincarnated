@@ -264,6 +264,7 @@ struct DownloadButtonView: View {
 	/// and the tab switch can never disagree about what was just kicked off.
 	private func _startDownload() {
 		guard let url = app.currentDownloadUrl else { return }
+		FeedbackManager.shared.tap()
 
 		let download = downloadManager.startDownload(
 			from: url,

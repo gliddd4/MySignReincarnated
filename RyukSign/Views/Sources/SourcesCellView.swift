@@ -250,6 +250,7 @@ extension SourcesCellView {
 	@ViewBuilder
 	private func _favoriteAction() -> some View {
 		Button {
+			FeedbackManager.shared.selection()
 			_favorites.toggle(_key)
 		} label: {
 			Label(

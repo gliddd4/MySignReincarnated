@@ -40,6 +40,9 @@ struct AppearanceView: View {
 	@AppStorage("Feather.userTintColor")
 	private var _selectedColorHex: String = "#848ef9"
 
+	@ObservedObject private var _feedback = FeedbackManager.shared
+	@ObservedObject private var _statusBar = StatusBarManager.shared
+
 	private var _tintColorBinding: Binding<Color> {
 		Binding(
 			get: { Color(hex: _selectedColorHex) },
@@ -113,6 +116,33 @@ struct AppearanceView: View {
 					Text(.localized("This enables liquid glass for this app, this requires a restart of the app to take effect."))
 				}
 			}
+
+			NBSection(.localized("Status Bar Clock")) {
+				Toggle(.localized("Replace Status Bar with Clock"), isOn: $_statusBar.isEnabled)
+				Toggle(.localized("24-Hour Time"), isOn: $_statusBar.uses24HourTime)
+					.disabled(!_statusBar.isEnabled)
+				Toggle(.localized("Hide AM/PM"), isOn: $_statusBar.hidesAMPM)
+					.disabled(!_statusBar.isEnabled)
+				Toggle(.localized("Use Theme Color"), isOn: $_statusBar.usesThemeColor)
+					.disabled(!_statusBar.isEnabled)
+			} footer: {
+				Text(.localized("Replaces the system status bar with a themed clock drawn by the app, in the space the hidden status bar gives up. The clock only shows in portrait on iPhone."))
+			}
+
+			NBSection(.localized("Feedback")) {
+				Toggle(.localized("Haptics"), isOn: $_feedback.hapticsEnabled)
+				Toggle(.localized("Sounds"), isOn: $_feedback.soundsEnabled)
+				Picker(.localized("Sound Style"), selection: $_feedback.soundStyle) {
+					ForEach(FeedbackManager.SoundStyle.allCases) { style in
+						Text(style.title).tag(style)
+					}
+				}
+			} footer: {
+				Text(.localized("Tactile and audio feedback for taps, toggles and completed operations. Choosing a sound style plays a preview."))
+			}
+		}
+		.onChange(of: _feedback.soundStyle) { _, _ in
+			_feedback.previewSound()
 		}
 		.onChange(of: _userIntefacerStyle) { value in
 			if let style = UIUserInterfaceStyle(rawValue: value) {
