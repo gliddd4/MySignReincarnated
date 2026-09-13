@@ -16,7 +16,9 @@ struct SettingsView: View {
     @AppStorage("feather.selectedCert") private var _storedSelectedCert: Int = 0
     @State private var _currentIcon: String? = UIApplication.shared.alternateIconName
     @ObservedObject private var _selfUpdate = SelfUpdateManager.shared
-    @ObservedObject private var _feedback = FeedbackManager.shared
+    // Not `_feedback`: that name is already the About/feedback section method below,
+    // and a property's getter collides with a no-argument method of the same name.
+    @ObservedObject private var _feedbackPrefs = FeedbackManager.shared
 
     // MARK: Fetch
     @FetchRequest(
@@ -100,9 +102,9 @@ struct SettingsView: View {
                     NavigationLink(destination: DownloadHistoryView()) {
                         Label(.localized("Download History"), systemImage: "clock.arrow.circlepath")
                     }
-                    Toggle(.localized("Haptics"), isOn: $_feedback.hapticsEnabled)
-                    Toggle(.localized("Sounds"), isOn: $_feedback.soundsEnabled)
-                    Picker(.localized("Sound Style"), selection: $_feedback.soundStyle) {
+                    Toggle(.localized("Haptics"), isOn: $_feedbackPrefs.hapticsEnabled)
+                    Toggle(.localized("Sounds"), isOn: $_feedbackPrefs.soundsEnabled)
+                    Picker(.localized("Sound Style"), selection: $_feedbackPrefs.soundStyle) {
                         ForEach(FeedbackManager.SoundStyle.allCases) { style in
                             Text(style.title).tag(style)
                         }
@@ -112,8 +114,8 @@ struct SettingsView: View {
                 }
                 // Single-parameter closure: the two-parameter `onChange` is iOS 17 and
                 // the app target is iOS 16.
-                .onChange(of: _feedback.soundStyle) { _ in
-                    _feedback.previewSound()
+                .onChange(of: _feedbackPrefs.soundStyle) { _ in
+                    _feedbackPrefs.previewSound()
                 }
 
                 NBSection(.localized("Features")) {
