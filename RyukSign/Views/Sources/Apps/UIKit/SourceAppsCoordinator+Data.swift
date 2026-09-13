@@ -43,6 +43,31 @@ extension SourceAppsTableRepresentableView.Coordinator {
             }
         }
         
+        /// The section letter an app files under, or "#" when its first
+        /// character is not an ASCII letter.
+        ///
+        /// This replaced `range(of: "[A-Z]", options: .regularExpression)`, which
+        /// compiles a fresh regular expression for every app it is asked about.
+        /// `Dictionary(grouping:)` asks once per element, so a large repository
+        /// paid for fifteen thousand regex compilations before it could show a
+        /// list. Behaviour is the same apart from a name whose uppercased first
+        /// character expands to several letters, which now files under the first
+        /// instead of all of them.
+        static func sectionLetter(for name: String?) -> String {
+            guard
+                let first = name?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .first?
+                    .uppercased()
+                    .first,
+                first.isASCII,
+                first.isLetter
+            else {
+                return "#"
+            }
+            return String(first)
+        }
+
         func sortByName(_ apps: [(source: ASRepository, app: ASRepository.App)]) -> [(source: ASRepository, app: ASRepository.App)] {
             let sorted = apps.sorted { lhs, rhs in
                 let n1 = lhs.app.name ?? ""
@@ -52,8 +77,7 @@ extension SourceAppsTableRepresentableView.Coordinator {
             }
             
             cache.groupedByName = Dictionary(grouping: sorted) { entry in
-                let first = entry.app.name?.trimmingCharacters(in: .whitespacesAndNewlines).first?.uppercased() ?? "#"
-                return first.range(of: "[A-Z]", options: .regularExpression) != nil ? first : "#"
+                Self.sectionLetter(for: entry.app.name)
             }
             
             cache.sectionTitles = cache.groupedByName.keys.sorted { lhs, rhs in

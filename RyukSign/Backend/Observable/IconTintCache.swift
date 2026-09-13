@@ -110,6 +110,17 @@ final class IconTintCache: ObservableObject {
 
 	// MARK: - Colour maths
 
+	/// One context for every extraction.
+	///
+	/// Building a `CIContext` allocates GPU resources, and the old code built a
+	/// fresh one per icon — sixty of them while a sixty-source list was trying to
+	/// appear, for a colour nobody had asked for yet.
+	private static let _ciContext = CIContext(options: [.workingColorSpace: NSNull()])
+
+	/// `CGColorSpaceCreateDeviceRGB()` was also being built per icon, and it is
+	/// pure allocation.
+	private static let _colorSpace = CGColorSpaceCreateDeviceRGB()
+
 	/// Average colour of a Gaussian-blurred icon, nudged into a range that stays
 	/// legible as a tint on both light and dark backgrounds.
 	static func dominantColor(from data: Data, blurRadius: Double = 18) -> UIColor? {
@@ -127,13 +138,13 @@ final class IconTintCache: ObservableObject {
 		guard let output = filter.outputImage else { return nil }
 
 		var bitmap = [UInt8](repeating: 0, count: 4)
-		CIContext(options: [.workingColorSpace: NSNull()]).render(
+		_ciContext.render(
 			output,
 			toBitmap: &bitmap,
 			rowBytes: 4,
 			bounds: CGRect(x: 0, y: 0, width: 1, height: 1),
 			format: .RGBA8,
-			colorSpace: CGColorSpaceCreateDeviceRGB()
+			colorSpace: _colorSpace
 		)
 
 		guard bitmap[3] > 0 else { return nil }
