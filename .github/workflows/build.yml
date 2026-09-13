@@ -22,8 +22,13 @@ permissions:
 jobs:
   build:
     # RyukSign references iOS 26 APIs (BGContinuedProcessingTask, Liquid Glass),
-    # so it needs an iOS 26 SDK. macos-26 ships Xcode 26.
-    runs-on: macos-26
+    # so it needs the iOS 26 SDK — not the newest macOS image.
+    #
+    # macos-15 carries Xcode 26.3 (17C529) and the iPhoneOS 26.2 SDK, the same
+    # Xcode this project is developed against, from a pool that has been around
+    # since 2024. A job on macos-26 sat queued for over half an hour without a
+    # runner ever being assigned; these start in well under a minute.
+    runs-on: macos-15
     timeout-minutes: 60
 
     steps:
