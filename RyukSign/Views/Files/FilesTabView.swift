@@ -61,6 +61,10 @@ struct FilesDirectoryView: View {
 		_browser.filtered(_entries, query: _searchText)
 	}
 
+	private var _emptyMessage: String {
+		_searchText.isEmpty ? .localized("This folder is empty") : .localized("No matches")
+	}
+
 	// MARK: Body
 
 	var body: some View {
@@ -79,7 +83,7 @@ struct FilesDirectoryView: View {
 
 			if _displayed.isEmpty {
 				Section {
-					Text(_searchText.isEmpty ? .localized("This folder is empty") : .localized("No matches"))
+					Text(verbatim: _emptyMessage)
 						.font(.footnote)
 						.foregroundStyle(.secondary)
 				}
@@ -89,7 +93,7 @@ struct FilesDirectoryView: View {
 						_row(for: entry)
 					}
 				} header: {
-					Text(.localized("%lld items", arguments: _displayed.count))
+					Text(verbatim: .localized("%lld items", arguments: _displayed.count))
 				}
 			}
 		}

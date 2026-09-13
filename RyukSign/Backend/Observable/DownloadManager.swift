@@ -814,8 +814,13 @@ class DownloadManager: NSObject, ObservableObject {
 		endImport(for: download)
 
 		// The history entry is written when the download starts; this is the one
-		// place that knows how it actually ended.
-		DownloadHistory.shared.update(id: download.id, status: succeeded ? .completed : .failed)
+		// place that knows how it actually ended. `finishImport` is deliberately
+		// nonisolated, so hop to the main actor to touch the log.
+		let historyID = download.id
+		let historyStatus: DownloadRecordStatus = succeeded ? .completed : .failed
+		Task { @MainActor in
+			DownloadHistory.shared.update(id: historyID, status: historyStatus)
+		}
 
 		// Drop from activity tracking only once archiving completes (not on download finish).
 		if succeeded {
