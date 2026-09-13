@@ -34,6 +34,12 @@ struct TweakLibraryList: View {
 	@State private var _alert: ActiveAlert?
 	@State private var _folderNameField = ""
 
+	/// The glass tab bar draws the view toolbar, so this screen publishes its items
+	/// to the glass grid instead of contributing them to the navigation bar. Reached
+	/// from Settings as well as the Twaks tab, and the grid hosts both.
+	@ObservedObject private var _tabToolbar = TabToolbarRegistry.shared
+	@AppStorage("Feather.tabBarStyle") private var _tabBarStyle: TabBarStyle = .system
+
 	// Setting state while a menu or alert dismisses drops the presentation.
 	private func _show(_ sheet: Sheet) { Presentation.afterDismiss { _sheet = sheet } }
 	private func _show(_ alert: ActiveAlert) { Presentation.afterDismiss { _alert = alert } }
@@ -115,10 +121,16 @@ struct TweakLibraryList: View {
 				NBList(_navTitle) {
 					_listContent
 				}
-				.searchable(text: $_query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: Text(.localized("Search tweaks")))
+				.adaptiveSearchable(text: $_query, style: _tabBarStyle, placement: .navigationBarDrawer(displayMode: .automatic), prompt: .localized("Search tweaks"))
 			}
 		}
-		.toolbar { _toolbar }
+		.toolbar {
+			// The glass grid owns the toolbar items in that style.
+			if _tabBarStyle != .glassSwitcher {
+				_toolbar
+			}
+		}
+		.tabToolbar(_gridToolbarConfig)
 		.selectionActionBar(isActive: _isEditing, actions: _selectionActions)
 		.sheet(item: $_sheet) { sheet in _sheetView(sheet) }
 		.alert(
@@ -277,6 +289,86 @@ struct TweakLibraryList: View {
 		let urls = manager.exportableURLs(forTweakIds: _selection)
 		guard !urls.isEmpty else { Toast.error(.localized("Couldn't prepare the files"), duration: .long); return }
 		DocumentPicker.export(urls)
+	}
+}
+
+// MARK: - Glass grid config
+extension TweakLibraryList {
+	/// What the glass grid shows for this screen. Select and Done carry words, so
+	/// they land in the text box; the import and sort menus do not.
+	var _gridToolbarConfig: TabToolbarConfig {
+		var config = TabToolbarConfig()
+		config.hasSearch = true
+		config.searchPrompt = .localized("Search tweaks")
+
+		if _isEditing {
+			config.textActions = [
+				TabToolbarAction(
+					id: "selectAll",
+					systemImage: "checkmark.circle",
+					title: _selection == _visibleSelectableIds ? .localized("Deselect All") : .localized("Select All")
+				) {
+					if _selection == _visibleSelectableIds {
+						_selection.removeAll()
+					} else {
+						_selection = _visibleSelectableIds
+					}
+				},
+				TabToolbarAction(id: "done", systemImage: "checkmark", title: .localized("Done")) {
+					_isEditing = false
+					_selection.removeAll()
+				},
+			]
+		} else {
+			config.textActions = [
+				TabToolbarAction(
+					id: "select",
+					systemImage: "checkmark.circle",
+					title: .localized("Select"),
+					isDisabled: manager.tweaks.isEmpty
+				) {
+					_isEditing = true
+				},
+			]
+			config.iconActions = [
+				TabToolbarAction(
+					id: "add",
+					systemImage: "plus",
+					menu: [
+						TabToolbarMenuEntry(id: "importFile", title: .localized("Import File"), systemImage: "doc.badge.plus") {
+							_pickImport()
+						},
+						TabToolbarMenuEntry(id: "importIPA", title: .localized("Extract from IPA"), systemImage: "shippingbox") {
+							_pickIPA()
+						},
+						TabToolbarMenuEntry(id: "extractLibrary", title: .localized("Extract from Library App"), systemImage: "square.grid.2x2") {
+							_show(.extractLibrary)
+						},
+						.divider("addDivider"),
+						TabToolbarMenuEntry(id: "newFolder", title: .localized("New Folder"), systemImage: "folder.badge.plus") {
+							_folderNameField = ""
+							_show(.newFolder)
+						},
+					]
+				),
+				TabToolbarAction(
+					id: "sort",
+					systemImage: "line.3.horizontal.decrease",
+					menu: ItemSortOption.allCases.map { option in
+						TabToolbarMenuEntry(
+							id: option.rawValue,
+							title: option.label,
+							systemImage: option.systemImage,
+							isSelected: option.rawValue == _sortRaw
+						) {
+							_sortRaw = option.rawValue
+						}
+					}
+				),
+			]
+		}
+
+		return config
 	}
 }
 

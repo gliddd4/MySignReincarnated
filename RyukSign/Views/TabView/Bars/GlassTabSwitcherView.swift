@@ -2,24 +2,27 @@
 //  GlassTabSwitcherView.swift
 //  RyukSign
 //
-//  MySign's edge tab switcher, rebuilt on Apple's real Liquid Glass.
+//  MySign's edge tab switcher, rebuilt on Apple's real Liquid Glass, and then
+//  grown into a four-box reachable grid.
 //
 //  MySign pinned a collapsible vertical rail to the screen edge and hand-rolled
 //  its "glass" out of VariableBlur plus an ultra-thin material at 30% opacity, two
-//  years before iOS 26 shipped the real material. This keeps the interaction —
-//  10pt/25pt drag thresholds, a 20x100 drag handle, tap and long-press shortcuts,
-//  and a 10 second auto-hide — and drops the hand-rolled blur for
-//  `glassEffect(_:in:)`, with MySign's own recipe kept as the pre-26 fallback.
+//  years before iOS 26 shipped the real material. `glassEffect(_:in:)` replaces
+//  that, with MySign's own recipe kept as the pre-26 fallback.
+//
+//  The grid is arranged around the rail, and everything hangs off it:
+//
+//      [ search ]  [ toolbar items that carry a word ]   <- above the rail
+//      [ icon-only toolbar items ]  [ the tab rail ]     <- the rail's own row
+//
+//  The search circle is therefore diagonal to the rail rather than on its left or
+//  above it, and an item lands in the icon box or the text box depending on
+//  whether it carries a word.
 //
 //  Geometry notes, because the spacing is deliberately tied together:
 //  the rail insets and the gap between rows are chosen so the space *around* an
 //  icon is the same in every direction. The glyph sits in a slightly larger box,
 //  so `_slack` is added to the label's outer edge and doubled into `_itemGap`.
-//
-//  The arrow is MySign's chevron indicator. MySign flipped it by swapping
-//  `chevron.right` for `chevron.left` inside a `Group`, which cannot animate — a
-//  symbol is inserted and removed. Here it is one chevron that rotates to the
-//  rail's state and leans with the drag, so the arrow moves the way the swap implied.
 //
 
 import SwiftUI
@@ -54,16 +57,14 @@ struct GlassTabSwitcherView: View {
 	@ObservedObject private var _prefs = TabBarPreferences.shared
 	@ObservedObject private var _updates = AppUpdateChecker.shared
 	@ObservedObject private var _tweaks = TweakManager.shared
+	@ObservedObject private var _toolbar = TabToolbarRegistry.shared
 	@AppStorage("Feather.showSourcesUpdateBadge") private var _showSourcesUpdateBadge: Bool = true
 	@AppStorage("Feather.glassSwitcherExpanded") private var _isExpanded: Bool = false
 	@AppStorage("Feather.glassSwitcherHidden") private var _isHidden: Bool = false
 
 	@State private var _dragOffset: CGFloat = 0
 	@State private var _isDragging = false
-	@State private var _isHandleAutoHidden = false
-	/// Bumped on every interaction; the auto-hide task is keyed on it, so touching
-	/// the rail restarts MySign's 10 second timer without any timer bookkeeping.
-	@State private var _interaction = UUID()
+	@FocusState private var _searchFocused: Bool
 
 	// MARK: Geometry
 	//
@@ -83,13 +84,14 @@ struct GlassTabSwitcherView: View {
 	/// Between rows. Paired with `_slack` this makes the vertical gap between two
 	/// icons equal the horizontal gap from the rail's edge to an icon.
 	private let _itemGap: CGFloat = 6
-	/// Grows each row's touch target to the full pitch without moving anything.
-	private let _hitPad: CGFloat = 3
-	private let _handle: CGSize = .init(width: 20, height: 100)
-	private let _handleHitWidth: CGFloat = 40
+	/// Between the four boxes of the grid.
+	private let _boxGap: CGFloat = 8
+	/// Diameter of the circular search button.
+	private let _circle: CGFloat = 46
+	private let _fieldWidth: CGFloat = 214
 	private let _corner: CGFloat = 22
-	private let _autoHideDelay: Duration = .seconds(10)
-	/// Centre the rail a quarter of the way down from the top instead of the middle.
+	/// Centre the grid a quarter of the way up from the middle, so it sits within
+	/// reach of a thumb rather than dead centre.
 	private let _verticalShift: CGFloat = 0.25
 
 	/// Half the difference between the glyph and its box — the extra space that has to
@@ -106,6 +108,14 @@ struct GlassTabSwitcherView: View {
 		_tabs.contains(_selection.selectedTab) ? _selection.selectedTab : (_tabs.first ?? .library)
 	}
 
+	private var _iconActions: [TabToolbarAction] {
+		_toolbar.config.iconActions.filter { !$0.hasText }
+	}
+
+	private var _textActions: [TabToolbarAction] {
+		_toolbar.config.textActions + _toolbar.config.iconActions.filter { $0.hasText }
+	}
+
 	var body: some View {
 		GeometryReader { geometry in
 			ZStack(alignment: .trailing) {
@@ -113,35 +123,52 @@ struct GlassTabSwitcherView: View {
 					.environmentObject(_selection)
 					.frame(width: geometry.size.width, height: geometry.size.height)
 
-				_switcher
+				_grid
 					.offset(y: -geometry.size.height * _verticalShift)
 			}
 		}
+		// The screen that owns the new tab publishes on appear; clearing first stops
+		// the outgoing screen's items lingering in the gap.
+		.onChange(of: _selection.selectedTab) { _ in
+			_toolbar.reset()
+		}
 	}
 
-	// MARK: Switcher
+	// MARK: Grid
 
-	private var _switcher: some View {
-		HStack(spacing: 0) {
-			_handleStrip
-			_rail
+	private var _grid: some View {
+		VStack(alignment: .trailing, spacing: _boxGap) {
+			if _toolbar.isSearching {
+				_searchField
+			} else {
+				HStack(spacing: _boxGap) {
+					if _toolbar.config.hasSearch {
+						_searchButton
+					}
+					if !_textActions.isEmpty {
+						_textBox
+					}
+				}
+			}
+
+			HStack(alignment: .center, spacing: _boxGap) {
+				if !_iconActions.isEmpty {
+					_iconBox
+				}
+				_rail
+			}
 		}
 		.padding(.trailing, 10)
-		.offset(x: _isHidden ? 260 : 0)
+		.offset(x: _isHidden ? 340 : 0)
 		.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
 		.overlay(alignment: .trailing) { _edgeSwipeStrip }
 		.animation(.spring(response: 0.4, dampingFraction: 0.8), value: _isHidden)
 		.animation(.spring(response: 0.3, dampingFraction: 0.7), value: _isDragging)
-		.animation(.easeInOut(duration: 0.3), value: _isHandleAutoHidden)
+		.animation(.spring(response: 0.3, dampingFraction: 0.8), value: _toolbar.isSearching)
 		.zIndex(999)
-		.task(id: _interaction) {
-			try? await Task.sleep(for: _autoHideDelay)
-			guard !Task.isCancelled else { return }
-			withAnimation(.easeInOut(duration: 0.3)) {
-				_isHandleAutoHidden = true
-			}
-		}
 	}
+
+	// MARK: Rail
 
 	private var _rail: some View {
 		SwitcherGlassContainer(spacing: _itemGap) {
@@ -156,6 +183,9 @@ struct GlassTabSwitcherView: View {
 		.offset(x: _dragOffset)
 		.scaleEffect(_isDragging ? 0.98 : 1.0)
 		.gesture(_railDrag)
+		// With the arrow gone the rail is its own control surface. A tap has to stay
+		// free for the tabs inside it, so labels are a long press and hiding is a drag.
+		.onLongPressGesture(minimumDuration: 0.35) { _toggleLabels() }
 		.animation(.spring(response: 0.4, dampingFraction: 0.8), value: _isExpanded)
 	}
 
@@ -181,7 +211,7 @@ struct GlassTabSwitcherView: View {
 					.font(.system(size: _glyph, weight: isSelected ? .semibold : .medium))
 					.foregroundStyle(isSelected ? Color.userTint : Color.primary)
 					.frame(width: _iconBox, height: _iconBox)
-					.overlay(alignment: .topTrailing) { _badge(for: tab) }
+					.overlay(alignment: .topTrailing) { _tabBadge(for: tab) }
 			}
 			.frame(height: _iconBox)
 			.contentShape(Rectangle())
@@ -190,23 +220,18 @@ struct GlassTabSwitcherView: View {
 		// A row is only as tall as its icon, so the touch target is grown to the full
 		// pitch and the layout is pulled back — the hit area covers the gap between
 		// rows without adding any visible space.
-		.padding(.vertical, _hitPad)
+		.padding(.vertical, 3)
 		.contentShape(Rectangle())
-		.padding(.vertical, -_hitPad)
+		.padding(.vertical, -3)
 		.accessibilityLabel(tab.title)
 	}
 
 	@ViewBuilder
-	private func _badge(for tab: TabEnum) -> some View {
+	private func _tabBadge(for tab: TabEnum) -> some View {
 		let count = _badgeCount(for: tab)
 
 		if count > 0 {
-			Text(verbatim: count > 99 ? "99+" : "\(count)")
-				.font(.system(size: 10, weight: .bold))
-				.foregroundStyle(.white)
-				.padding(.horizontal, 5)
-				.padding(.vertical, 2)
-				.background(Capsule().fill(.red))
+			_countBadge(count, font: 10)
 				.offset(x: 6, y: -2)
 		}
 	}
@@ -217,54 +242,169 @@ struct GlassTabSwitcherView: View {
 		return 0
 	}
 
-	// MARK: Handle
+	private func _countBadge(_ count: Int, font: CGFloat) -> some View {
+		Text(verbatim: count > 99 ? "99+" : "\(count)")
+			.font(.system(size: font, weight: .bold))
+			.foregroundStyle(.white)
+			.padding(.horizontal, 5)
+			.padding(.vertical, 2)
+			.background(Capsule().fill(.red))
+	}
 
-	private var _handleStrip: some View {
-		VStack(spacing: 0) {
-			Spacer(minLength: 0)
+	// MARK: Toolbar boxes
 
-			ZStack {
-				Color.clear
-					.frame(width: _handle.width, height: _handle.height)
-					.modifier(
-						SwitcherGlass(
-							shape: RoundedRectangle(cornerRadius: 12, style: .continuous),
-							interactive: true
-						)
-					)
+	/// Icons with no word on them, in their own box beside the rail.
+	private var _iconBox: some View {
+		let glyph = _glyphFor(_iconActions.count)
 
-				_arrow
+		return HStack(spacing: _itemGap) {
+			ForEach(_iconActions) { action in
+				_control(action, glyph: glyph, showsTitle: false)
 			}
-			.opacity(_isHandleAutoHidden ? 0 : 1)
-			.scaleEffect(_isDragging ? 1.15 : 1.0)
-			.offset(x: _isDragging ? _dragOffset * 0.3 : 0)
-
-			Spacer(minLength: 0)
 		}
-		.frame(width: _handleHitWidth)
+		.padding(_padding)
+		.modifier(SwitcherGlass(shape: RoundedRectangle(cornerRadius: _corner, style: .continuous)))
+	}
+
+	/// Items that carry a word, in their own box directly above the rail.
+	private var _textBox: some View {
+		let glyph = _glyphFor(_textActions.count)
+
+		return HStack(spacing: _labelSpacing + 4) {
+			ForEach(_textActions) { action in
+				_control(action, glyph: glyph, showsTitle: true)
+			}
+		}
+		.padding(_padding)
+		.modifier(SwitcherGlass(shape: RoundedRectangle(cornerRadius: _corner, style: .continuous)))
+	}
+
+	/// More than two controls in a box and they start shrinking. Fitting them is
+	/// the answer "for now"; nothing is moved to a second box yet.
+	private func _glyphFor(_ count: Int) -> CGFloat {
+		guard count > 2 else { return _glyph }
+		return max(11, _glyph * 2 / CGFloat(count))
+	}
+
+	@ViewBuilder
+	private func _control(_ action: TabToolbarAction, glyph: CGFloat, showsTitle: Bool) -> some View {
+		if action.menu.isEmpty {
+			Button {
+				action.action?()
+				FeedbackManager.shared.tap(.light)
+			} label: {
+				_controlLabel(action, glyph: glyph, showsTitle: showsTitle)
+			}
+			.buttonStyle(.plain)
+			.disabled(action.isDisabled)
+			.accessibilityLabel(Text(action.title ?? action.id))
+		} else {
+			Menu {
+				ForEach(action.menu) { entry in
+					if entry.isDivider {
+						Divider()
+					} else {
+						Button {
+							entry.action()
+						} label: {
+							if entry.isSelected {
+								Label(entry.title, systemImage: "checkmark")
+							} else if let image = entry.systemImage {
+								Label(entry.title, systemImage: image)
+							} else {
+								Text(entry.title)
+							}
+						}
+					}
+				}
+			} label: {
+				_controlLabel(action, glyph: glyph, showsTitle: showsTitle)
+			}
+			.disabled(action.isDisabled)
+			.accessibilityLabel(Text(action.title ?? action.id))
+		}
+	}
+
+	private func _controlLabel(_ action: TabToolbarAction, glyph: CGFloat, showsTitle: Bool) -> some View {
+		HStack(spacing: 6) {
+			Image(systemName: action.systemImage)
+				.font(.system(size: glyph, weight: .medium))
+				.overlay(alignment: .topTrailing) {
+					if action.badge > 0 {
+						_countBadge(action.badge, font: 9)
+							.offset(x: 7, y: -5)
+					}
+				}
+
+			if showsTitle, let title = action.title, !title.isEmpty {
+				Text(title)
+					.font(.system(size: 15, weight: .medium))
+					.lineLimit(1)
+					.fixedSize()
+			}
+		}
+		.foregroundStyle(Color.primary)
+		.frame(height: _iconBox)
+		.frame(minWidth: _iconBox)
+		.padding(.horizontal, showsTitle ? 4 : 0)
 		.contentShape(Rectangle())
-		.gesture(_handleDrag)
-		.onTapGesture { _toggleFromHandle(light: true) }
-		.onLongPressGesture(minimumDuration: 0.3) { _toggleFromHandle(light: false) }
 	}
 
-	/// On a trailing rail the arrow points the way the rail has to be dragged to
-	/// change state: left to pull it out, right to push it back.
-	private var _arrow: some View {
-		Image(systemName: "chevron.right")
-			.font(.system(size: 12, weight: .bold))
-			.foregroundStyle(_isDragging ? Color.userTint : Color.primary)
-			.rotationEffect(_arrowAngle)
-			.animation(.spring(response: 0.3, dampingFraction: 0.7), value: _isExpanded)
-			.animation(.spring(response: 0.3, dampingFraction: 0.7), value: _isHidden)
+	// MARK: Search
+
+	private var _searchButton: some View {
+		Button {
+			withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+				_toolbar.isSearching = true
+			}
+			_searchFocused = true
+			FeedbackManager.shared.tap(.light)
+		} label: {
+			Image(systemName: "magnifyingglass")
+				.font(.system(size: _glyph, weight: .medium))
+				.foregroundStyle(Color.primary)
+				.frame(width: _circle, height: _circle)
+				.contentShape(Circle())
+				.modifier(SwitcherGlass(shape: Circle(), interactive: true))
+		}
+		.buttonStyle(.plain)
+		.accessibilityLabel(.localized("Search"))
 	}
 
-	private var _arrowAngle: Angle {
-		let base: Double = _isExpanded ? 0 : 180
-		guard _isDragging else { return .degrees(base) }
-		// Lean up to 45 degrees either way while the handle is being pulled.
-		let lean = min(max(Double(-_dragOffset) / 60, -0.5), 0.5) * 90
-		return .degrees(base + lean)
+	private var _searchField: some View {
+		HStack(spacing: 8) {
+			Image(systemName: "magnifyingglass")
+				.font(.system(size: 15, weight: .medium))
+				.foregroundStyle(.secondary)
+
+			TextField(
+				_toolbar.config.searchPrompt.isEmpty ? .localized("Search") : _toolbar.config.searchPrompt,
+				text: $_toolbar.searchText
+			)
+			.focused($_searchFocused)
+			.font(.system(size: 16))
+			.submitLabel(.search)
+			.autocorrectionDisabled()
+			.textInputAutocapitalization(.never)
+
+			Button {
+				withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+					_toolbar.searchText = ""
+					_toolbar.isSearching = false
+				}
+				_searchFocused = false
+			} label: {
+				Image(systemName: "xmark.circle.fill")
+					.font(.system(size: 16))
+					.foregroundStyle(.secondary)
+			}
+			.buttonStyle(.plain)
+			.accessibilityLabel(.localized("Cancel"))
+		}
+		.padding(.horizontal, 14)
+		.frame(width: _fieldWidth, height: _circle)
+		.modifier(SwitcherGlass(shape: RoundedRectangle(cornerRadius: _circle / 2, style: .continuous)))
+		.onAppear { _searchFocused = true }
 	}
 
 	// MARK: Edge reveal
@@ -284,9 +424,7 @@ struct GlassTabSwitcherView: View {
 						guard value.translation.width < -15 else { return }
 						withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
 							_isHidden = false
-							_isHandleAutoHidden = false
 						}
-						_interaction = UUID()
 						FeedbackManager.shared.tap(.medium)
 					}
 			)
@@ -299,7 +437,6 @@ struct GlassTabSwitcherView: View {
 		DragGesture(minimumDistance: 10)
 			.onChanged { value in
 				_isDragging = true
-				_wake()
 				if !_isExpanded {
 					_dragOffset = value.translation.width * 0.5
 				}
@@ -320,7 +457,6 @@ struct GlassTabSwitcherView: View {
 							_isExpanded = false
 						} else {
 							_isHidden = true
-							_isHandleAutoHidden = true
 						}
 						FeedbackManager.shared.tap(.medium)
 					}
@@ -328,89 +464,18 @@ struct GlassTabSwitcherView: View {
 			}
 	}
 
-	private var _handleDrag: some Gesture {
-		DragGesture(minimumDistance: 5)
-			.onChanged { value in
-				_isDragging = true
-				_dragOffset = value.translation.width * 0.3
-				_wake()
-			}
-			.onEnded { value in
-				_isDragging = false
-				let distance = value.translation.width
-				let velocity = value.predictedEndTranslation.width
+	// MARK: State
 
-				withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-					_dragOffset = 0
-
-					if distance < -15 || velocity < -25 {
-						if _isHidden {
-							_isHidden = false
-						} else {
-							_isExpanded = true
-						}
-						FeedbackManager.shared.tap(.medium)
-					} else if distance > 15 || velocity > 25 {
-						if _isExpanded {
-							_isExpanded = false
-						} else {
-							_isHidden = true
-							_isHandleAutoHidden = true
-						}
-						FeedbackManager.shared.tap(.medium)
-					}
-				}
-			}
-	}
-
-	private func _toggleFromHandle(light: Bool) {
-		_wake()
-
-		withAnimation(.spring(response: light ? 0.3 : 0.2, dampingFraction: light ? 0.7 : 0.6)) {
-			if light {
-				if _isHidden {
-					_isHidden = false
-				} else if _isExpanded {
-					_isExpanded = false
-				} else {
-					_isExpanded = true
-				}
-			} else {
-				// Long press skips a step: collapsed goes straight to hidden, and
-				// hidden comes back already expanded.
-				if _isHidden {
-					_isHidden = false
-					_isExpanded = true
-				} else if _isExpanded {
-					_isExpanded = false
-					_isHidden = true
-				} else {
-					_isExpanded = true
-				}
-			}
-			_isHandleAutoHidden = false
+	private func _toggleLabels() {
+		withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+			_isExpanded.toggle()
 		}
-
-		if light {
-			FeedbackManager.shared.tap(.light)
-		} else {
-			FeedbackManager.shared.tap(.heavy)
-		}
-	}
-
-	/// Any interaction keeps the handle on screen and restarts its idle timer.
-	private func _wake() {
-		_interaction = UUID()
-		guard _isHandleAutoHidden else { return }
-		withAnimation(.easeInOut(duration: 0.2)) {
-			_isHandleAutoHidden = false
-		}
+		FeedbackManager.shared.tap(.light)
 	}
 
 	// MARK: Selection
 
 	private func _select(_ tab: TabEnum) {
-		_wake()
 		FeedbackManager.shared.tap(.light)
 
 		withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {

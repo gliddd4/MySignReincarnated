@@ -18,6 +18,11 @@ struct CertificatesView: View {
 	@State private var _certToRename: CertificatePair?
 	@State private var _newNickname: String = ""
 
+	/// The glass tab bar draws the view toolbar, so this screen publishes its items
+	/// to the glass grid instead of contributing them to the navigation bar.
+	@ObservedObject private var _tabToolbar = TabToolbarRegistry.shared
+	@AppStorage("Feather.tabBarStyle") private var _tabBarStyle: TabBarStyle = .system
+
 	// MARK: Fetch
 	@FetchRequest(
 		entity: CertificatePair.entity(),
@@ -34,6 +39,24 @@ struct CertificatesView: View {
 		self._bindingSelectedCert = selectedCert
 	}
 	
+	// MARK: Glass grid config
+
+	/// A single icon: the only toolbar item this screen has, and only while the
+	/// picker is not driving it.
+	private var _gridToolbarConfig: TabToolbarConfig {
+		var config = TabToolbarConfig()
+
+		if _bindingSelectedCert == nil {
+			config.iconActions = [
+				TabToolbarAction(id: "add", systemImage: "plus") {
+					_isAddingPresenting = true
+				},
+			]
+		}
+
+		return config
+	}
+
 	// MARK: Body
 	var body: some View {
 		NBGrid {
@@ -58,7 +81,8 @@ struct CertificatesView: View {
 			}
 		}
 		.toolbar {
-			if _bindingSelectedCert == nil {
+			// The glass grid owns the toolbar items in that style.
+			if _tabBarStyle != .glassSwitcher, _bindingSelectedCert == nil {
 				NBToolbarButton(
 					systemImage: "plus",
 					style: .icon,
@@ -68,6 +92,7 @@ struct CertificatesView: View {
 				}
 			}
 		}
+		.tabToolbar(_gridToolbarConfig)
 		.sheet(item: $_isSelectedInfoPresenting) { cert in
 			CertificatesInfoView(cert: cert)
 		}

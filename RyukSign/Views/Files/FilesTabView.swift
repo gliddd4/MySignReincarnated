@@ -46,6 +46,11 @@ struct FilesDirectoryView: View {
 	@State private var _searchText: String = ""
 	@AppStorage("RyukSign.filesSort") private var _sortRaw: String = ItemSortOption.nameAZ.rawValue
 
+	/// The glass tab bar draws the view toolbar, so this screen publishes its items
+	/// to the glass grid instead of contributing them to the navigation bar.
+	@ObservedObject private var _tabToolbar = TabToolbarRegistry.shared
+	@AppStorage("Feather.tabBarStyle") private var _tabBarStyle: TabBarStyle = .system
+
 	@State private var _isPrompting = false
 	@State private var _promptMode: _PromptMode = .newFolder
 	@State private var _promptText: String = ""
@@ -100,19 +105,24 @@ struct FilesDirectoryView: View {
 		.listStyle(.insetGrouped)
 		.navigationTitle(isRoot ? .localized("Files") : directory.lastPathComponent)
 		.navigationBarTitleDisplayMode(isRoot ? .large : .inline)
-		.searchable(
+		.adaptiveSearchable(
 			text: $_searchText,
+			style: _tabBarStyle,
 			placement: .navigationBarDrawer(displayMode: .always),
 			prompt: .localized("Search this folder")
 		)
 		.toolbar {
-			ToolbarItem(placement: .navigationBarTrailing) {
-				_sortMenu
-			}
-			ToolbarItem(placement: .navigationBarTrailing) {
-				_addMenu
+			// The glass grid owns the toolbar items in that style.
+			if _tabBarStyle != .glassSwitcher {
+				ToolbarItem(placement: .navigationBarTrailing) {
+					_sortMenu
+				}
+				ToolbarItem(placement: .navigationBarTrailing) {
+					_addMenu
+				}
 			}
 		}
+		.tabToolbar(_gridToolbarConfig)
 		.overlay {
 			if _browser.isBusy {
 				ProgressView()
@@ -138,6 +148,49 @@ struct FilesDirectoryView: View {
 		.fullScreenCover(item: $_viewerEntry) { entry in
 			ImagePagerView(directory: directory, start: entry)
 		}
+	}
+
+	// MARK: Glass grid config
+
+	/// What the glass grid shows for this screen: two icon menus, no text anywhere,
+	/// and the folder search.
+	private var _gridToolbarConfig: TabToolbarConfig {
+		var config = TabToolbarConfig()
+		config.hasSearch = true
+		config.searchPrompt = .localized("Search this folder")
+		config.iconActions = [
+			TabToolbarAction(
+				id: "sort",
+				systemImage: "arrow.up.arrow.down",
+				menu: ItemSortOption.allCases.map { option in
+					TabToolbarMenuEntry(
+						id: option.rawValue,
+						title: option.label,
+						systemImage: option.systemImage,
+						isSelected: option.rawValue == _sortRaw
+					) {
+						_sortRaw = option.rawValue
+					}
+				}
+			),
+			TabToolbarAction(
+				id: "add",
+				systemImage: "plus",
+				menu: [
+					TabToolbarMenuEntry(id: "newFolder", title: .localized("New Folder"), systemImage: "folder.badge.plus") {
+						_promptMode = .newFolder
+						_promptText = ""
+						_isPrompting = true
+					},
+					TabToolbarMenuEntry(id: "import", title: .localized("Import Files"), systemImage: "square.and.arrow.down") {
+						DocumentPicker.open([.item], multiple: true) { urls in
+							_browser.importFiles(urls, into: directory)
+						}
+					},
+				]
+			),
+		]
+		return config
 	}
 
 	// MARK: Row

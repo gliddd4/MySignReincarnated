@@ -31,6 +31,11 @@ struct LibraryView: View {
     @State private var scrollProxy: ScrollViewProxy?
     
     @Namespace private var _namespace
+
+    /// The glass tab bar draws the view toolbar, so this screen publishes its items
+    /// to the glass grid instead of contributing them to the navigation bar.
+    @ObservedObject private var _tabToolbar = TabToolbarRegistry.shared
+    @AppStorage("Feather.tabBarStyle") private var _tabBarStyle: TabBarStyle = .system
     
     // MARK: Fetch
     @FetchRequest(
@@ -76,35 +81,39 @@ struct LibraryView: View {
     var body: some View {
         NBNavigationView(.localized("Library")) {
             mainContent
+                .tabToolbar(_gridToolbarConfig)
                 .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        if _editMode.isEditing {
-                            HStack(spacing: 12) {
-                                Button("Done") {
-                                    withAnimation {
-                                        _editMode = .inactive
-                                        _selectedAppUUIDs.removeAll()
+                    // The glass grid owns the toolbar items in that style.
+                    if _tabBarStyle != .glassSwitcher {
+                        ToolbarItem(placement: .topBarLeading) {
+                            if _editMode.isEditing {
+                                HStack(spacing: 12) {
+                                    Button("Done") {
+                                        withAnimation {
+                                            _editMode = .inactive
+                                            _selectedAppUUIDs.removeAll()
+                                        }
+                                    }
+                                    Button(action: selectAllApps) {
+                                        Text("Select All")
                                     }
                                 }
-                                Button(action: selectAllApps) {
-                                    Text("Select All")
-                                }
-                            }
-                        } else {
-                            Button("Edit") {
-                                withAnimation {
-                                    _editMode = .active
+                            } else {
+                                Button("Edit") {
+                                    withAnimation {
+                                        _editMode = .active
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if !_editMode.isEditing {
-                            Menu {
-                                importMenuActions
-                            } label: {
-                                Image(systemName: "plus")
+                        ToolbarItem(placement: .topBarTrailing) {
+                            if !_editMode.isEditing {
+                                Menu {
+                                    importMenuActions
+                                } label: {
+                                    Image(systemName: "plus")
+                                }
                             }
                         }
                     }
@@ -161,7 +170,7 @@ struct LibraryView: View {
                     appsListContent
                 }
             }
-            .searchable(text: $_searchText, placement: .platform())
+            .adaptiveSearchable(text: $_searchText, style: _tabBarStyle)
             .compatSearchScopes($_selectedScope) {
                 ForEach(Scope.allCases, id: \.displayName) { scope in
                     Text(scope.displayName).tag(scope)
@@ -337,6 +346,57 @@ struct LibraryView: View {
 
     // MARK: Import Menu Actions
     @ViewBuilder
+    // MARK: Glass grid config
+
+    /// What the glass grid shows for this screen. The split between the two boxes is
+    /// simply whether an item carries a word: Edit and Select All are text, the
+    /// import menu is an icon.
+    private var _gridToolbarConfig: TabToolbarConfig {
+        var config = TabToolbarConfig()
+        config.hasSearch = true
+        config.searchPrompt = .localized("Search library")
+
+        if _editMode.isEditing {
+            config.textActions = [
+                TabToolbarAction(id: "done", systemImage: "checkmark", title: .localized("Done")) {
+                    withAnimation {
+                        _editMode = .inactive
+                        _selectedAppUUIDs.removeAll()
+                    }
+                },
+                TabToolbarAction(id: "selectAll", systemImage: "checkmark.circle", title: .localized("Select All")) {
+                    selectAllApps()
+                },
+            ]
+        } else {
+            config.textActions = [
+                TabToolbarAction(id: "edit", systemImage: "square.and.pencil", title: .localized("Edit")) {
+                    withAnimation { _editMode = .active }
+                },
+            ]
+            config.iconActions = [
+                TabToolbarAction(
+                    id: "import",
+                    systemImage: "plus",
+                    menu: [
+                        TabToolbarMenuEntry(id: "files", title: .localized("Import from Files"), systemImage: "folder") {
+                            DocumentPicker.open([.ipa, .tipa], multiple: true, folder: .apps) { urls in
+                                for url in urls {
+                                    downloadManager.startArchive(from: url, id: "FeatherManualDownload_\(UUID().uuidString)")
+                                }
+                            }
+                        },
+                        TabToolbarMenuEntry(id: "url", title: .localized("Import from URL"), systemImage: "globe") {
+                            Presentation.afterDismiss { _isDownloadingPresenting = true }
+                        },
+                    ]
+                ),
+            ]
+        }
+
+        return config
+    }
+
     private var importMenuActions: some View {
         Button(.localized("Import from Files"), systemImage: "folder") {
             DocumentPicker.open([.ipa, .tipa], multiple: true, folder: .apps) { urls in

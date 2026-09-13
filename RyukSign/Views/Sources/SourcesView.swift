@@ -58,6 +58,11 @@ struct SourcesView: View {
 	@ObservedObject private var _news = NewsFeed.shared
 	@State private var _isNewsPresenting = false
 
+	/// The glass tab bar draws the view toolbar, so this screen publishes its items
+	/// to the glass grid instead of contributing them to the navigation bar.
+	@ObservedObject private var _tabToolbar = TabToolbarRegistry.shared
+	@AppStorage("Feather.tabBarStyle") private var _tabBarStyle: TabBarStyle = .system
+
 	private var _sortOption: SourceSortOption {
 		SourceSortOption(rawValue: _sortRawValue) ?? .nameAZ
 	}
@@ -109,6 +114,7 @@ struct SourcesView: View {
 		NBNavigationView(.localized("Sources")) {
 			mainContent
 		}
+		.tabToolbar(_gridToolbarConfig)
 		.task(id: Array(_sources)) {
 			await viewModel.fetchSources(_sources)
 			// The feed is built from repositories now in memory, so it has to be
@@ -183,12 +189,15 @@ struct SourcesView: View {
 				repositoriesSection
 			}
 		}
-		.searchable(text: $_searchText, placement: .platform())
+		.adaptiveSearchable(text: $_searchText, style: _tabBarStyle)
 		.overlay {
 			emptyStateView
 		}
 		.toolbar {
-			toolbarContent
+			// The glass grid owns the toolbar items in that style.
+			if _tabBarStyle != .glassSwitcher {
+				toolbarContent
+			}
 		}
 		.refreshable {
 			await viewModel.fetchSources(_sources, refresh: true)
@@ -402,6 +411,76 @@ struct SourcesView: View {
 				}
 			}
 		}
+	}
+
+	// MARK: Glass grid config
+
+	/// What the glass grid shows for this screen. The split between the two boxes is
+	/// simply whether an item carries a word: Edit/Done/Select All are text, the
+	/// icon buttons are not.
+	private var _gridToolbarConfig: TabToolbarConfig {
+		var config = TabToolbarConfig()
+		config.hasSearch = true
+		config.searchPrompt = .localized("Search repositories")
+
+		if _isEditMode {
+			config.textActions = [
+				TabToolbarAction(id: "done", systemImage: "checkmark", title: .localized("Done")) {
+					withAnimation {
+						_isEditMode = false
+						_selectedSources.removeAll()
+					}
+				},
+				TabToolbarAction(id: "selectAll", systemImage: "checkmark.circle", title: .localized("Select All")) {
+					selectAllSources()
+				},
+			]
+			config.iconActions = [
+				TabToolbarAction(
+					id: "delete",
+					systemImage: "trash",
+					isDisabled: _selectedSources.isEmpty
+				) {
+					if !_selectedSources.isEmpty {
+						_showDeleteConfirmation = true
+					}
+				},
+			]
+		} else {
+			config.textActions = _filteredSources.isEmpty ? [] : [
+				TabToolbarAction(id: "edit", systemImage: "square.and.pencil", title: .localized("Edit")) {
+					withAnimation { _isEditMode = true }
+				},
+			]
+			config.iconActions = [
+				TabToolbarAction(id: "news", systemImage: "newspaper", badge: _news.unseenCount) {
+					_isNewsPresenting = true
+				},
+				TabToolbarAction(
+					id: "sort",
+					systemImage: "arrow.up.arrow.down",
+					menu: SourceSortOption.allCases.map { option in
+						TabToolbarMenuEntry(
+							id: option.rawValue,
+							title: option.label,
+							systemImage: option.systemImage,
+							isSelected: option.rawValue == _sortRawValue
+						) {
+							_sortRawValue = option.rawValue
+						}
+					}
+				),
+				TabToolbarAction(
+					id: "add",
+					systemImage: "plus",
+					isDisabled: _addingSourceLoading
+				) {
+					_isAddingPresenting = true
+				},
+			]
+		}
+
+		return config
 	}
 
 	@ToolbarContentBuilder
