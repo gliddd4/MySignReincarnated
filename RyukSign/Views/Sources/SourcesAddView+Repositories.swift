@@ -130,6 +130,34 @@ extension SourcesAddView {
 		}
 	}
 
+	// MARK: - Export
+
+	/// Copies every repository to the clipboard, either as plain newline-separated
+	/// URLs or as one ESign code — the exact string format the Import button reads.
+	func _exportSources(asESignCode: Bool) {
+		// A source can exist without a URL while it is still being imported, and
+		// force-unwrapping it here would take the screen down over one bad row.
+		let urls = Storage.shared.getSources().compactMap { $0.sourceURL?.absoluteString }
+
+		guard !urls.isEmpty else {
+			Toast.error(.localized("No sources to export"), duration: .sticky)
+			return
+		}
+
+		if asESignCode {
+			guard let code = ASEncrypt.encrypt(sources: urls) else {
+				Toast.error(.localized("Could not build an ESign code"), duration: .sticky)
+				return
+			}
+			UIPasteboard.general.string = code
+		} else {
+			UIPasteboard.general.string = urls.joined(separator: "\n")
+		}
+
+		FeedbackManager.shared.success()
+		Toast.success(.localized("Copied %lld sources to the clipboard", arguments: urls.count))
+	}
+
 	// MARK: - Premium RyukSign API
 
 	func _validatePremiumAPIKey() {

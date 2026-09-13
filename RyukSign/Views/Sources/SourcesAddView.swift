@@ -182,19 +182,19 @@ struct SourcesAddView: View {
 				}
 			}
 
-			Button(.localized("Export"), systemImage: "doc.on.doc") {
-				let sources = Storage.shared.getSources()
-				if sources.isEmpty {
-					Toast.error("No sources to export", duration: .sticky)
-				} else {
-					UIPasteboard.general.string = sources.map {
-						$0.sourceURL!.absoluteString
-					}.joined(separator: "\n")
-					Toast.success("Successfully exported \(sources.count) source\(sources.count == 1 ? "" : "s") to clipboard")
+			Menu {
+				Button(.localized("Copy as URLs"), systemImage: "link") {
+					_exportSources(asESignCode: false)
 				}
+				Button(.localized("Copy as ESign Code"), systemImage: "lock.doc") {
+					_exportSources(asESignCode: true)
+				}
+			} label: {
+				Label(.localized("Export"), systemImage: "doc.on.doc")
 			}
 		} footer: {
 			Text(.localized("Supports importing from KravaSign/MapleSign and ESign."))
+			Text(.localized("An ESign code packs every repository into one string, so a single paste gives someone your whole list."))
 		}
 	}
 

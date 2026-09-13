@@ -266,6 +266,20 @@ extension SourcesCellView {
 		Button(.localized("Copy"), systemImage: "doc.on.clipboard") {
 			UIPasteboard.general.string = source.sourceURL?.absoluteString
 		}
+		Button(.localized("Copy ESign Code"), systemImage: "lock.doc") {
+			// Same string format the Import screen reads, so one repository can be
+			// handed to someone else as a single pasteable token.
+			guard
+				let url = source.sourceURL?.absoluteString,
+				let code = ASEncrypt.encrypt(sources: [url])
+			else {
+				Toast.error(.localized("This repository has no URL to export"), duration: .sticky)
+				return
+			}
+			UIPasteboard.general.string = code
+			FeedbackManager.shared.success()
+			Toast.success(.localized("ESign code copied"))
+		}
 		Button(.localized("View JSON"), systemImage: "curlybraces") {
 			_isShowingJSON = true
 		}
