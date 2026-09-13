@@ -13,6 +13,7 @@ enum TabEnum: String, CaseIterable, Hashable, Codable {
 	case tweaks
 	case settings
 	case certificates
+	case files
 
 	var title: String {
 		switch self {
@@ -21,6 +22,7 @@ enum TabEnum: String, CaseIterable, Hashable, Codable {
 		case .tweaks: 		return .localized("Tweaks")
 		case .settings: 	return .localized("Settings")
 		case .certificates:	return .localized("Certificates")
+		case .files:		return .localized("Files")
 		}
 	}
 
@@ -31,6 +33,7 @@ enum TabEnum: String, CaseIterable, Hashable, Codable {
 		case .tweaks: 		return "wrench.and.screwdriver"
 		case .settings: 	return "gearshape.2"
 		case .certificates: return "person.text.rectangle"
+		case .files: 		return "folder"
 		}
 	}
 
@@ -42,6 +45,7 @@ enum TabEnum: String, CaseIterable, Hashable, Codable {
 		case .tweaks: TweaksView()
 		case .settings: SettingsView()
 		case .certificates: NBNavigationView(.localized("Certificates")) { CertificatesView() }
+		case .files: FilesTabView()
 		}
 	}
 
@@ -56,7 +60,8 @@ enum TabEnum: String, CaseIterable, Hashable, Codable {
 	
 	static var customizableTabs: [TabEnum] {
 		return [
-			.certificates
+			.certificates,
+			.files
 		]
 	}
 }

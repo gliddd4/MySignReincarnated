@@ -7,14 +7,38 @@
 //
 //  A browser over the app's own container: navigate, search, rename, move,
 //  delete, zip/unzip and share. Scoped to the app's Documents directory on
-//  purpose — the old build reached into /System via a sandbox exploit, which
-//  does not work on current iOS and is not something this build wants to carry.
+//  purpose — the old build reached outside the sandbox through an iOS 14-era
+//  exploit, which no longer works and is not something this build wants to
+//  carry. Everything the app can legitimately see, it can browse here.
+//
+//  The service is stateless: callers ask for a listing of a directory, and every
+//  mutation announces itself through `fileBrowserDidChange` so whichever
+//  directory views are on screen can refresh themselves. Keeping the current
+//  directory in a singleton instead meant a pushed folder and the root could
+//  disagree about what was on screen.
 //
 
 import Foundation
 import SwiftUI
 import Zip
 import NimbleExtensions
+
+extension Notification.Name {
+	/// Posted after any file-system mutation the browser performs.
+	static let fileBrowserDidChange = Notification.Name("RyukSign.fileBrowserDidChange")
+}
+
+// MARK: - Location
+
+/// A named place inside the container. A struct rather than a tuple because
+/// `ForEach` needs a key path, and Swift has no key paths into tuples.
+struct FileLocation: Identifiable, Hashable {
+	var title: String
+	var icon: String
+	var url: URL
+
+	var id: String { url.absoluteString }
+}
 
 // MARK: - Entry
 
@@ -60,7 +84,6 @@ struct FileEntry: Identifiable, Hashable, SortableItem {
 		if isCertBundle { return "checkmark.seal.fill" }
 		if isTweak { return "wrench.and.screwdriver.fill" }
 		if isImage { return "photo.fill" }
-		if pathExtension == "mobileprovision" { return "doc.badge.gearshape" }
 		if ["plist", "json", "txt", "log", "md"].contains(pathExtension) { return "doc.text.fill" }
 		return "doc.fill"
 	}
@@ -80,84 +103,51 @@ struct FileEntry: Identifiable, Hashable, SortableItem {
 final class FileBrowser: ObservableObject {
 	static let shared = FileBrowser()
 
-	@Published private(set) var directory: URL
-	@Published private(set) var entries: [FileEntry] = []
-	@Published var searchText: String = ""
-	@Published var sort: ItemSortOption = .nameAZ {
-		didSet { applySort() }
-	}
+	/// True while a zip/unzip is running, so the UI can show it.
 	@Published private(set) var isBusy: Bool = false
 
-	/// Everything the browser can see — the app's own container.
-	private var root: URL { URL.documentsDirectory }
+	private init() {}
+
+	/// The container root. Nothing outside it is browsable.
+	var root: URL { URL.documentsDirectory }
 
 	/// Convenient starting points, all inside the container.
-	var shortcuts: [(title: String, icon: String, url: URL)] {
+	var shortcuts: [FileLocation] {
 		let fm = FileManager.default
 		return [
-			("Documents", "folder", URL.documentsDirectory),
-			("Archives", "archivebox", fm.archives),
-			("Signed", "checkmark.seal", fm.signed),
-			("Unsigned", "doc.badge.clock", fm.unsigned),
-			("Certificates", "person.text.rectangle", fm.certificates),
-			("Tweaks", "wrench.and.screwdriver", fm.tweaksLibrary)
+			FileLocation(title: .localized("Documents"), icon: "folder", url: URL.documentsDirectory),
+			FileLocation(title: .localized("Archives"), icon: "archivebox", url: fm.archives),
+			FileLocation(title: .localized("Signed"), icon: "checkmark.seal", url: fm.signed),
+			FileLocation(title: .localized("Unsigned"), icon: "doc.badge.clock", url: fm.unsigned),
+			FileLocation(title: .localized("Certificates"), icon: "person.text.rectangle", url: fm.certificates),
+			FileLocation(title: .localized("Tweaks"), icon: "wrench.and.screwdriver", url: fm.tweaksLibrary)
 		]
 	}
 
-	private init() {
-		directory = URL.documentsDirectory
-		reload()
+	/// Refuses to walk outside the container.
+	func isBrowsable(_ url: URL) -> Bool {
+		url.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path)
 	}
 
-	// MARK: Navigation
+	// MARK: Listing
 
-	/// True while the browser is below the container root.
-	var canGoUp: Bool {
-		directory.standardizedFileURL.path != root.standardizedFileURL.path
-	}
+	func list(_ directory: URL) -> [FileEntry] {
+		guard isBrowsable(directory) else { return [] }
 
-	/// Root → current, for the breadcrumb.
-	var breadcrumbs: [URL] {
-		let rootPath = root.standardizedFileURL.path
-		let currentPath = directory.standardizedFileURL.path
-		guard currentPath.hasPrefix(rootPath) else { return [root] }
+		let keys: [URLResourceKey] = [
+			.isDirectoryKey,
+			.fileSizeKey,
+			.totalFileAllocatedSizeKey,
+			.contentModificationDateKey
+		]
 
-		var result: [URL] = [root]
-		let relative = currentPath.dropFirst(rootPath.count)
-		var accumulated = root
-		for component in relative.split(separator: "/") {
-			accumulated = accumulated.appendingPathComponent(String(component))
-			result.append(accumulated)
-		}
-		return result
-	}
-
-	func open(_ url: URL) {
-		// Refuse to walk outside the container.
-		guard url.standardizedFileURL.path.hasPrefix(root.standardizedFileURL.path) else { return }
-		directory = url
-		searchText = ""
-		reload()
-	}
-
-	func goUp() {
-		guard canGoUp else { return }
-		directory = directory.deletingLastPathComponent()
-		searchText = ""
-		reload()
-	}
-
-	func reload() {
-		let fm = FileManager.default
-		let keys: [URLResourceKey] = [.isDirectoryKey, .fileSizeKey, .totalFileAllocatedSizeKey, .contentModificationDateKey]
-
-		let urls = (try? fm.contentsOfDirectory(
+		let urls = (try? FileManager.default.contentsOfDirectory(
 			at: directory,
 			includingPropertiesForKeys: keys,
 			options: [.skipsHiddenFiles]
 		)) ?? []
 
-		entries = urls.compactMap { url in
+		return urls.compactMap { url in
 			guard let values = try? url.resourceValues(forKeys: Set(keys)) else { return nil }
 			return FileEntry(
 				url: url,
@@ -166,20 +156,30 @@ final class FileBrowser: ObservableObject {
 				modified: values.contentModificationDate ?? .distantPast
 			)
 		}
-
-		applySort()
 	}
 
-	/// Search-filtered, sorted entries for the UI.
-	var displayedEntries: [FileEntry] {
-		let query = searchText.trimmingCharacters(in: .whitespaces)
-		guard !query.isEmpty else { return entries }
-		return entries.filter { $0.name.localizedCaseInsensitiveContains(query) }
+	/// Folders first, then by the chosen order.
+	func sorted(_ entries: [FileEntry], by sort: ItemSortOption) -> [FileEntry] {
+		let directories = entries.filter(\.isDirectory).sorted { _isOrdered($0, $1, sort) }
+		let files = entries.filter { !$0.isDirectory }.sorted { _isOrdered($0, $1, sort) }
+		return directories + files
+	}
+
+	func filtered(_ entries: [FileEntry], query: String) -> [FileEntry] {
+		let trimmed = query.trimmingCharacters(in: .whitespaces)
+		guard !trimmed.isEmpty else { return entries }
+		return entries.filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
+	}
+
+	/// Children of a directory that are images, in listing order — the image
+	/// viewer pages through exactly this so cycling matches what was on screen.
+	func images(in directory: URL) -> [FileEntry] {
+		sorted(list(directory), by: .nameAZ).filter(\.isImage)
 	}
 
 	// MARK: Operations
 
-	func makeFolder(named name: String) {
+	func makeFolder(named name: String, in directory: URL) {
 		let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
 		guard !trimmed.isEmpty else { return }
 
@@ -192,7 +192,7 @@ final class FileBrowser: ObservableObject {
 		do {
 			try FileManager.default.createDirectoryIfNeeded(at: target)
 			Toast.success(.localized("Folder created"), systemImage: "folder.badge.plus")
-			reload()
+			_announce()
 		} catch {
 			Toast.error(error.localizedDescription, duration: .long)
 		}
@@ -217,7 +217,7 @@ final class FileBrowser: ObservableObject {
 		do {
 			try FileManager.default.moveItem(at: entry.url, to: destination)
 			Toast.success(.localized("Renamed"), systemImage: "pencil")
-			reload()
+			_announce()
 		} catch {
 			Toast.error(error.localizedDescription, duration: .long)
 		}
@@ -227,15 +227,37 @@ final class FileBrowser: ObservableObject {
 		do {
 			try FileManager.default.removeItem(at: entry.url)
 			Toast.success(.localized("Deleted"), systemImage: "trash.fill")
-			reload()
+			_announce()
+		} catch {
+			Toast.error(error.localizedDescription, duration: .long)
+		}
+	}
+
+	func duplicate(_ entry: FileEntry) {
+		let base = entry.url.deletingPathExtension().lastPathComponent
+		let ext = entry.pathExtension
+		let parent = entry.url.deletingLastPathComponent()
+
+		var index = 2
+		var destination = parent.appendingPathComponent(ext.isEmpty ? "\(base) copy" : "\(base) copy.\(ext)")
+		while FileManager.default.fileExists(atPath: destination.path), index < 100 {
+			destination = parent.appendingPathComponent(ext.isEmpty ? "\(base) copy \(index)" : "\(base) copy \(index).\(ext)")
+			index += 1
+		}
+
+		do {
+			try FileManager.default.copyItem(at: entry.url, to: destination)
+			Toast.success(.localized("Duplicated"), systemImage: "plus.square.on.square")
+			_announce()
 		} catch {
 			Toast.error(error.localizedDescription, duration: .long)
 		}
 	}
 
 	func move(_ entry: FileEntry, into target: URL) {
-		let destination = target.appendingPathComponent(entry.name)
+		guard isBrowsable(target) else { return }
 
+		let destination = target.appendingPathComponent(entry.name)
 		guard destination.standardizedFileURL.path != entry.url.standardizedFileURL.path else { return }
 		guard !FileManager.default.fileExists(atPath: destination.path) else {
 			Toast.error(.localized("Something with that name already exists"), duration: .long)
@@ -245,14 +267,14 @@ final class FileBrowser: ObservableObject {
 		do {
 			try FileManager.default.moveItem(at: entry.url, to: destination)
 			Toast.success(.localized("Moved"), systemImage: "arrow.turn.down.right")
-			reload()
+			_announce()
 		} catch {
 			Toast.error(error.localizedDescription, duration: .long)
 		}
 	}
 
-	/// Copies files the user picked into the directory on screen.
-	func importFiles(_ urls: [URL]) {
+	/// Copies files the user picked into a directory.
+	func importFiles(_ urls: [URL], into directory: URL) {
 		guard !urls.isEmpty else { return }
 		var imported = 0
 
@@ -272,13 +294,15 @@ final class FileBrowser: ObservableObject {
 
 		if imported > 0 {
 			Toast.success(.localized("Imported %lld item(s)", arguments: imported), systemImage: "square.and.arrow.down.fill")
-			reload()
+			_announce()
 		}
 	}
 
 	/// Packs a file/folder into a `.zip` sitting next to it.
 	func zip(_ entry: FileEntry) {
-		let destination = directory.appendingPathComponent("\(entry.url.deletingPathExtension().lastPathComponent).zip")
+		let parent = entry.url.deletingLastPathComponent()
+		let destination = parent.appendingPathComponent("\(entry.url.deletingPathExtension().lastPathComponent).zip")
+
 		guard !FileManager.default.fileExists(atPath: destination.path) else {
 			Toast.error(.localized("An archive with that name already exists"), duration: .long)
 			return
@@ -299,30 +323,30 @@ final class FileBrowser: ObservableObject {
 			case .failure(let error):
 				Toast.error(error.localizedDescription, duration: .long)
 			}
-			self.reload()
+			self._announce()
 		}
 	}
 
 	/// Unpacks a `.zip` into a sibling folder named after the archive.
 	func unzip(_ entry: FileEntry) {
-		let base = directory.appendingPathComponent(
+		let parent = entry.url.deletingLastPathComponent()
+		let base = parent.appendingPathComponent(
 			entry.url.deletingPathExtension().lastPathComponent,
 			isDirectory: true
 		)
 
 		// Don't silently merge into an existing folder — suffix instead.
-		var finalTarget = base
+		var target = base
 		var index = 2
-		while FileManager.default.fileExists(atPath: finalTarget.path) {
-			finalTarget = directory.appendingPathComponent("\(base.lastPathComponent) \(index)", isDirectory: true)
+		while FileManager.default.fileExists(atPath: target.path), index <= 100 {
+			target = parent.appendingPathComponent("\(base.lastPathComponent) \(index)", isDirectory: true)
 			index += 1
-			if index > 100 { break }
 		}
 
 		isBusy = true
 		_offMain {
-			try FileManager.default.createDirectoryIfNeeded(at: finalTarget)
-			try Zip.unzipFile(entry.url, destination: finalTarget, overwrite: true, password: nil, progress: nil)
+			try FileManager.default.createDirectoryIfNeeded(at: target)
+			try Zip.unzipFile(entry.url, destination: target, overwrite: true, password: nil, progress: nil)
 		} completion: { [weak self] result in
 			guard let self else { return }
 			self.isBusy = false
@@ -331,29 +355,27 @@ final class FileBrowser: ObservableObject {
 				Toast.success(.localized("Unpacked"), systemImage: "doc.zipper")
 			case .failure(let error):
 				// Leave no half-extracted folder behind.
-				try? FileManager.default.removeItem(at: finalTarget)
+				try? FileManager.default.removeItem(at: target)
 				Toast.error(error.localizedDescription, duration: .long)
 			}
-			self.reload()
+			self._announce()
 		}
 	}
 
 	// MARK: Internal
 
-	private func applySort() {
-		let directoriesFirst = entries.filter(\.isDirectory).sorted(by: _comparator)
-		let files = entries.filter { !$0.isDirectory }.sorted(by: _comparator)
-		entries = directoriesFirst + files
-	}
-
-	private func _comparator(_ lhs: FileEntry, _ rhs: FileEntry) -> Bool {
+	private func _isOrdered(_ lhs: FileEntry, _ rhs: FileEntry, _ sort: ItemSortOption) -> Bool {
 		switch sort {
-		case .nameAZ:     return lhs.sortName < rhs.sortName
-		case .nameZA:     return lhs.sortName > rhs.sortName
-		case .dateNewest: return lhs.sortDate > rhs.sortDate
-		case .dateOldest: return lhs.sortDate < rhs.sortDate
+		case .nameAZ:      return lhs.sortName < rhs.sortName
+		case .nameZA:      return lhs.sortName > rhs.sortName
+		case .dateNewest:  return lhs.sortDate > rhs.sortDate
+		case .dateOldest:  return lhs.sortDate < rhs.sortDate
 		case .sizeLargest: return lhs.sortSize > rhs.sortSize
 		}
+	}
+
+	private func _announce() {
+		NotificationCenter.default.post(name: .fileBrowserDidChange, object: nil)
 	}
 
 	/// Runs blocking archive work off the main thread and reports back on it.
@@ -371,5 +393,3 @@ final class FileBrowser: ObservableObject {
 		}
 	}
 }
-
-// MARK: - Helpers
