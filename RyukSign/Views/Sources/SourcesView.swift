@@ -50,6 +50,14 @@ struct SourcesView: View {
 
 	@AppStorage("RyukSign.sourceSort") private var _sortRawValue: String = SourceSortOption.nameAZ.rawValue
 
+	/// Browse settings (Settings → Browse).
+	@AppStorage(BrowsePreferences.hidesRepositorySectionCounts) private var _hidesSectionCounts = false
+
+	/// Announcements from every source, so a notice from a repository you have not
+	/// opened is not invisible.
+	@ObservedObject private var _news = NewsFeed.shared
+	@State private var _isNewsPresenting = false
+
 	private var _sortOption: SourceSortOption {
 		SourceSortOption(rawValue: _sortRawValue) ?? .nameAZ
 	}
@@ -103,6 +111,12 @@ struct SourcesView: View {
 		}
 		.task(id: Array(_sources)) {
 			await viewModel.fetchSources(_sources)
+			// The feed is built from repositories now in memory, so it has to be
+			// rebuilt after they land, not before.
+			_news.rebuild()
+		}
+		.sheet(isPresented: $_isNewsPresenting) {
+			NewsFeedView()
 		}
 		.onChange(of: appNavigationManager.pendingAppNavigation) { pendingNavigation in
 			handlePendingNavigation(pendingNavigation)
@@ -244,7 +258,7 @@ struct SourcesView: View {
 		if !_favoriteSources.isEmpty {
 			NBSection(
 				.localized("Favourites"),
-				secondary: "\(_favoriteSources.count)"
+				secondary: _hidesSectionCounts ? nil : "\(_favoriteSources.count)"
 			) {
 				ForEach(_favoriteSources) { source in
 					if _isEditMode {
@@ -259,10 +273,12 @@ struct SourcesView: View {
 
 	@ViewBuilder
 	private var repositoriesSection: some View {
+		// Selection feedback is never hidden — knowing how many you are about to
+		// delete is not the same as knowing how many you have.
 		let sectionTitle = _isEditMode ? "\(_selectedSources.count) selected" : "\(_otherSources.count)"
 		NBSection(
 			.localized("Repositories"),
-			secondary: sectionTitle
+			secondary: (_hidesSectionCounts && !_isEditMode) ? nil : sectionTitle
 		) {
 			ForEach(_otherSources) { source in
 				if _isEditMode {
@@ -271,6 +287,28 @@ struct SourcesView: View {
 					normalModeRow(for: source)
 				}
 			}
+		}
+	}
+
+	/// Always present, so the feed stays reachable once everything has been read;
+	/// the badge only says how much is new.
+	@ViewBuilder
+	private var _newsButton: some View {
+		Button {
+			_isNewsPresenting = true
+		} label: {
+			Image(systemName: "newspaper")
+				.overlay(alignment: .topTrailing) {
+					if _news.unseenCount > 0 {
+						Text(verbatim: _news.unseenCount > 9 ? "9+" : "\(_news.unseenCount)")
+							.font(.system(size: 9, weight: .bold))
+							.foregroundStyle(.white)
+							.padding(.horizontal, 3)
+							.padding(.vertical, 1)
+							.background(Capsule().fill(.red))
+							.offset(x: 6, y: -6)
+					}
+				}
 		}
 	}
 
@@ -404,6 +442,7 @@ struct SourcesView: View {
 				.disabled(_selectedSources.isEmpty)
 			} else {
 				HStack(spacing: 12) {
+					_newsButton
 					sortMenu
 					Button {
 						_isAddingPresenting = true

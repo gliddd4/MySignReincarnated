@@ -38,6 +38,12 @@ struct SourcesCellView: View {
 	@State private var _isShowingJSON = false
 	@State private var _isShowingDebug = false
 
+	// Browse settings (Settings → Browse). Read here rather than passed in, so a
+	// toggle redraws the list without the whole tab being rebuilt.
+	@AppStorage(BrowsePreferences.hidesRepositoryAppCounts) private var _hidesAppCounts = false
+	@AppStorage(BrowsePreferences.disablesTintColorFallback) private var _disablesTintFallback = false
+	@AppStorage(BrowsePreferences.disablesIconFallback) private var _disablesIconFallback = false
+
 	/// Stable key for favourites/tints: identifier, falling back to the URL.
 	private var _key: String {
 		SourceFavorites.key(for: source)
@@ -57,7 +63,10 @@ struct SourcesCellView: View {
 	}
 
 	private var _tint: Color? {
-		_tints.tint(for: _key)
+		// With the fallback off, only a colour the repository actually declared
+		// counts — a generated one is exactly what the setting exists to avoid.
+		guard !_disablesTintFallback else { return nil }
+		return _tints.tint(for: _key)
 	}
 
 	/// Icon candidates in preference order: the repository's own icon, then its
@@ -75,10 +84,14 @@ struct SourcesCellView: View {
 
 		if let repository = SourcesViewModel.shared.sources[source] {
 			append(repository.iconURL)
-			// A handful of apps is enough to find a recognisable icon, and it stops
-			// a 15,000-app repository from firing 15,000 requests.
-			for app in repository.apps.prefix(5) {
-				append(app.iconURL)
+
+			// Only reach for an app's icon when the fallback is allowed. A handful
+			// is enough to find a recognisable one, and it stops a 15,000-app
+			// repository from firing 15,000 requests.
+			if !_disablesIconFallback {
+				for app in repository.apps.prefix(5) {
+					append(app.iconURL)
+				}
 			}
 		}
 
@@ -107,12 +120,16 @@ struct SourcesCellView: View {
 		}
 		.onAppear {
 			_isExcluded = RyukSignAPI.isSourceExcluded(_sourceIdentifier)
-			// Resolve against the same candidates the icon uses, so a repository
-			// with no declared icon still gets a colour instead of none.
 			let candidates = _candidateIcons
-			_repoIcons.ensureIcon(for: _key, candidates: candidates)
-			// Extract once per source; cached to disk from then on.
-			_tints.ensureTint(for: _key, iconURL: candidates.first)
+
+			if !_disablesIconFallback {
+				_repoIcons.ensureIcon(for: _key, candidates: candidates)
+			}
+			// Resolve the colour against the same candidates the icon uses, so a
+			// repository with no declared icon still gets one instead of none.
+			if !_disablesTintFallback {
+				_tints.ensureTint(for: _key, iconURL: candidates.first)
+			}
 		}
 
 		if isEditMode {
@@ -153,7 +170,7 @@ extension SourcesCellView {
 	/// a dozen repositories on screen, which is the point of the compact row.
 	@ViewBuilder
 	private var _icon: some View {
-		if let cached = _repoIcons.image(for: _key) {
+		if !_disablesIconFallback, let cached = _repoIcons.image(for: _key) {
 			Image(uiImage: cached)
 				.appIconStyle(size: 30)
 		} else if let iconURL = _candidateIcons.first {
@@ -182,7 +199,7 @@ extension SourcesCellView {
 				.lineLimit(1)
 				.truncationMode(.middle)
 
-			if let count = _appCount {
+			if let count = _appCount, !_hidesAppCounts {
 				Text(count.formatted(.number.notation(.compactName)))
 					.font(.caption)
 					.monospacedDigit()

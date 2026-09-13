@@ -101,6 +101,9 @@ struct SettingsView: View {
                     NavigationLink(destination: FilesCompressionView()) {
                         Label(.localized("Files & Compression"), systemImage: "archivebox")
                     }
+                    NavigationLink(destination: BrowseSettingsView()) {
+                        Label(.localized("Browse"), systemImage: "safari")
+                    }
                     NavigationLink(destination: SourceCacheSettingsView()) {
                         Label(.localized("Repository Cache"), systemImage: "cylinder.split.1x2")
                     }

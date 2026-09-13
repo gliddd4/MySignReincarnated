@@ -12,6 +12,9 @@ import NukeUI
 
 struct SourceAppsCellView: View {
 	@AppStorage("Feather.storeCellAppearance") private var _storeCellAppearance: Int = 0
+
+	/// Browse settings (Settings → Browse).
+	@AppStorage(BrowsePreferences.hidesAppDescriptions) private var _hidesAppDescriptions = false
 	
 	var source: ASRepository
 	var app: ASRepository.App
@@ -44,6 +47,7 @@ struct SourceAppsCellView: View {
 			}
 			
 			if _storeCellAppearance != 0,
+			   !_hidesAppDescriptions,
 			   let desc = app.localizedDescription {
 				Text(desc)
 					.frame(maxWidth: .infinity, alignment: .leading)
