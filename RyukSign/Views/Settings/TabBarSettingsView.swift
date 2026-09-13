@@ -25,8 +25,7 @@ struct TabBarSettingsView: View {
 					Label(.localized("Tab Bar Style"), systemImage: "rectangle.lefthalf.inset.filled")
 				}
 				.pickerStyle(.menu)
-			} footer: {
-				Text(.localized("The glass switcher is a collapsible rail on the left edge, drawn with Liquid Glass on iOS 26. It shows your default tabs; Certificates and Files stay reachable from Settings."))
+			} footer: {				Text(.localized("The glass switcher is a collapsible rail on the right edge, drawn with Liquid Glass on iOS 26. It shows the tabs above; Certificates and Files stay reachable from Settings."))
 			}
 
 			NBSection(.localized("Default Launch Tab")) {

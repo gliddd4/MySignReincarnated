@@ -10,10 +10,8 @@
 import Foundation
 
 final class TabBarPreferences: ObservableObject {
-	static let shared = TabBarPreferences()
-
-	/// `settings` excluded so the user can always reach this screen to undo changes.
-	static let hideableTabs: [TabEnum] = [.sources, .library, .tweaks]
+	static let shared = TabBarPreferences()	/// `settings` excluded so the user can always reach this screen to undo changes.
+	static let hideableTabs: [TabEnum] = [.sources, .library, .downloads, .tweaks]
 
 	@Published private(set) var order: [TabEnum]
 	@Published private(set) var hidden: Set<TabEnum>
@@ -70,11 +68,17 @@ final class TabBarPreferences: ObservableObject {
 		_normalize()
 	}
 
-	// MARK: Derived
-
-	/// Default tabs in saved order (stale dropped, new appended).
+	// MARK: Derived	/// Default tabs in saved order (stale dropped, duplicates dropped, new appended).
+	///
+	/// The saved order is user data, and a tab can appear in it twice — the list is
+	/// rewritten from `orderedTabs` on every move, so a duplicate that is ever written
+	/// once would otherwise survive every future edit and render as a second row for
+	/// the same tab, which reads as a bug in the tab bar rather than in the data.
 	var orderedTabs: [TabEnum] {
-		var result = order.filter { TabEnum.defaultTabs.contains($0) }
+		var result: [TabEnum] = []
+		for tab in order where TabEnum.defaultTabs.contains(tab) && !result.contains(tab) {
+			result.append(tab)
+		}
 		for tab in TabEnum.defaultTabs where !result.contains(tab) {
 			result.append(tab)
 		}

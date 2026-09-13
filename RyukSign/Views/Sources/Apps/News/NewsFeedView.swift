@@ -60,35 +60,18 @@ struct NewsFeedView: View {
 	@ViewBuilder
 	private func _item(_ item: NewsFeed.Item) -> some View {
 		VStack(alignment: .leading, spacing: 8) {
-			// The announcement's artwork, with its headline laid over the bottom
-			// edge the same way the card inside a repository does. White on the
-			// gradient is what keeps the title legible over arbitrary artwork.
-			ZStack(alignment: .bottomLeading) {
-				_artwork(item)
-
-				LinearGradient(
-					gradient: Gradient(colors: [.black.opacity(0.8), .clear]),
-					startPoint: .bottom,
-					endPoint: .top
-				)
-				.frame(height: 90)
-				.frame(maxWidth: .infinity, alignment: .bottom)
-				.allowsHitTesting(false)
-
+			if item.news.imageURL != nil {
+				_artworkCard(item)
+			} else {
+				// An announcement with no artwork has nothing for a headline to sit
+				// on, so it goes back to being a plain left-aligned line instead of a
+				// title floating over an empty block of colour.
 				Text(item.news.title)
 					.font(.headline)
-					.foregroundStyle(.white)
+					.foregroundStyle(.primary)
 					.multilineTextAlignment(.leading)
-					.padding(12)
+					.frame(maxWidth: .infinity, alignment: .leading)
 			}
-			.frame(height: 180)
-			.frame(maxWidth: .infinity)
-			.background(item.news.tintColor ?? Color.secondary)
-			.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-			.overlay(
-				RoundedRectangle(cornerRadius: 12, style: .continuous)
-					.strokeBorder(Color.gray.opacity(0.2), lineWidth: 1)
-			)
 
 			if !item.news.caption.isEmpty {
 				Text(item.news.caption)
@@ -112,6 +95,39 @@ struct NewsFeedView: View {
 	}
 
 	// MARK: - Artwork
+
+	/// The announcement's artwork, with its headline laid over the bottom edge the
+	/// same way the card inside a repository does. White on the gradient is what keeps
+	/// the title legible over arbitrary artwork.
+	private func _artworkCard(_ item: NewsFeed.Item) -> some View {
+		ZStack(alignment: .bottomLeading) {
+			_artwork(item)
+
+			LinearGradient(
+				gradient: Gradient(colors: [.black.opacity(0.8), .clear]),
+				startPoint: .bottom,
+				endPoint: .top
+			)
+			.frame(height: 90)
+			.frame(maxWidth: .infinity, alignment: .bottom)
+			.allowsHitTesting(false)
+
+			Text(item.news.title)
+				.font(.headline)
+				.foregroundStyle(.white)
+				.multilineTextAlignment(.leading)
+				.padding(12)
+		}
+		.frame(height: 180)
+		.frame(maxWidth: .infinity)
+		.background(item.news.tintColor ?? Color.secondary)
+		.clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+		.overlay(
+			RoundedRectangle(cornerRadius: 12, style: .continuous)
+				.strokeBorder(Color.gray.opacity(0.2), lineWidth: 1)
+		)
+	}
+
 	@ViewBuilder
 	private func _artwork(_ item: NewsFeed.Item) -> some View {
 		Group {
