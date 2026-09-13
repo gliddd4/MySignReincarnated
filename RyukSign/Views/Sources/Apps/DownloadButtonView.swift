@@ -141,14 +141,9 @@ struct DownloadButtonView: View {
 							NBHaptic.tap()
 							_startDownload()
 						} label: {
-							Text(.localized("Update"))
-								.lineLimit(1)
-								.font(.headline.bold())
-								.foregroundStyle(.white)
-								.padding(.horizontal, 20)
-								.padding(.vertical, 6)
-								.background(Color.accentColor)
-								.clipShape(Capsule())
+							// Filled rather than outlined, so an available update stays
+							// distinguishable from a plain download now the label is gone.
+							_downloadIcon("arrow.down.circle.fill", tint: Color.accentColor, label: .localized("Update"))
 						}
 						.buttonStyle(.borderless)
 						.transition(.scale.combined(with: .opacity))
@@ -157,18 +152,7 @@ struct DownloadButtonView: View {
 							NBHaptic.tap()
 							_startDownload()
 						} label: {
-							HStack(spacing: 4) {
-								Image(systemName: "clock.arrow.circlepath")
-									.font(.headline.bold())
-								Text("Get")
-									.lineLimit(1)
-									.font(.headline.bold())
-							}
-							.foregroundStyle(.secondary)
-							.padding(.horizontal, 20)
-							.padding(.vertical, 6)
-							.background(Color(uiColor: .quaternarySystemFill))
-							.clipShape(Capsule())
+							_downloadIcon("clock.arrow.circlepath", tint: Color.secondary, label: .localized("Get"))
 						}
 						.buttonStyle(.borderless)
 						.transition(.scale.combined(with: .opacity))
@@ -219,18 +203,7 @@ struct DownloadButtonView: View {
 					NBHaptic.tap()
 					_startDownload()
 				} label: {
-					HStack(spacing: 4) {
-						Image(systemName: "arrow.down.circle")
-							.font(.headline.bold())
-						Text(.localized("Get"))
-							.lineLimit(1)
-							.font(.headline.bold())
-					}
-					.foregroundStyle(Color.accentColor)
-					.padding(.horizontal, 20)
-					.padding(.vertical, 6)
-					.background(Color(uiColor: .quaternarySystemFill))
-					.clipShape(Capsule())
+					_downloadIcon("arrow.down.circle", tint: Color.accentColor, label: .localized("Get"))
 				}
 				.buttonStyle(.borderless)
 				.transition(.scale.combined(with: .opacity))
@@ -260,6 +233,19 @@ struct DownloadButtonView: View {
 		.animation(hasAppeared ? .easeInOut(duration: 0.25) : nil, value: installedApp != nil)
 	}
 	
+	/// The download affordance is deliberately icon-only: the word cost the row
+	/// width it could not spare, and the symbol already says what it does. Sized
+	/// to match the progress ring and the row menu so every trailing edge lines up.
+	@ViewBuilder
+	private func _downloadIcon(_ systemImage: String, tint: Color, label: String) -> some View {
+		Image(systemName: systemImage)
+			.font(.title2)
+			.foregroundStyle(tint)
+			.frame(width: 34, height: 34)
+			.contentShape(Rectangle())
+			.accessibilityLabel(Text(label))
+	}
+
 	/// Single entry point for starting a download, so the queue, the history log
 	/// and the tab switch can never disagree about what was just kicked off.
 	private func _startDownload() {

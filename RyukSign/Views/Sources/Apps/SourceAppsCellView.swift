@@ -30,19 +30,10 @@ struct SourceAppsCellView: View {
 					// every row has to stay the same short height all the way down.
 					size: 30,
 					spacing: 10,
-					lineLimit: 1
+					lineLimit: 1,
+					// The repository the app came from, tucked into the icon's own corner.
+					badgeIconURL: source.currentIconURL
 				)
-				.overlay(alignment: .bottomLeading) {
-					if let iconURL = source.currentIconURL {
-						LazyImage(url: iconURL) { state in
-							if let image = state.image {
-								image
-									.appIconStyle(size: 20, isCircle: true, background: Color(uiColor: .secondarySystemBackground))
-									.offset(x: 41, y: 4)
-							}
-						}
-					}
-				}
 				DownloadButtonView(app: app)
 			}
 			

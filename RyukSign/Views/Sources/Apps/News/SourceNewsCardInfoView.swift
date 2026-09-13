@@ -52,7 +52,10 @@ struct SourceNewsCardInfoView: View {
 					VStack(alignment: .leading, spacing: 12) {
 						Text(new.title)
 							.font(.title.bold())
-							.foregroundStyle(.tint)
+							// The announcement's tint is for its artwork, not its headline:
+							// colouring the title with it turned every title into the accent
+							// colour. `.primary` adapts, so it reads white in dark mode.
+							.foregroundStyle(.primary)
 							.multilineTextAlignment(.leading)
 						
 						if !new.caption.isEmpty {

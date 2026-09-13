@@ -361,7 +361,10 @@ struct RepositoryJSONView: View {
 					.padding()
 			}
 			.toolbar {
-				NBToolbarButton(role: .dismiss)
+				// `.dismiss` is drawn as a `chevron.left` in the leading slot, which reads
+				// as "back" on a modal that has nothing to go back to. An xmark is the
+				// dismiss these sheets actually mean.
+				NBToolbarButton(role: .cancel)
 			}
 		}
 	}
@@ -443,7 +446,10 @@ struct RepositoryDebugView: View {
 				}
 			}
 			.toolbar {
-				NBToolbarButton(role: .dismiss)
+				// `.dismiss` is drawn as a `chevron.left` in the leading slot, which reads
+				// as "back" on a modal that has nothing to go back to. An xmark is the
+				// dismiss these sheets actually mean.
+				NBToolbarButton(role: .cancel)
 			}
 		}
 	}
