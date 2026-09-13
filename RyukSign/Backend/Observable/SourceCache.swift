@@ -40,6 +40,12 @@ final class SourceCache: ObservableObject {
 	/// Published so rows and the "most apps first" sort update as counts land.
 	@Published private(set) var counts: [String: CountEntry] = [:]
 
+	/// The counts sidecar: app totals and refresh dates as one small JSON file,
+	/// kept beside the cached bodies rather than inside their directory.
+	private var _countsURL: URL {
+		URL.documentsDirectory.appendingPathComponent("SourceCounts.json")
+	}
+
 	private init() {
 		counts = _loadCounts()
 	}
