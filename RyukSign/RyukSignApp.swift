@@ -21,7 +21,6 @@ struct RyukSignApp: App {
     @StateObject var downloadManager = DownloadManager.shared
     @StateObject private var tabSelection = TabSelectionObserver.shared
     @StateObject private var selfUpdate = SelfUpdateManager.shared
-    @StateObject private var statusBarManager = StatusBarManager.shared
     let storage = Storage.shared
 
     private var activeManualDownloads: [Download] {
@@ -125,10 +124,6 @@ struct RyukSignApp: App {
                     SelfUpdateSheet(release: release)
                 }
             }
-            .overlay(alignment: .topLeading) {
-                StatusBarClockOverlay()
-            }
-            .statusBarHidden(statusBarManager.hidesSystemStatusBar)
         }
     }
 

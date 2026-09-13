@@ -41,7 +41,6 @@ struct AppearanceView: View {
 	private var _selectedColorHex: String = "#848ef9"
 
 	@ObservedObject private var _feedback = FeedbackManager.shared
-	@ObservedObject private var _statusBar = StatusBarManager.shared
 
 	private var _tintColorBinding: Binding<Color> {
 		Binding(
@@ -115,18 +114,6 @@ struct AppearanceView: View {
 				} footer: {
 					Text(.localized("This enables liquid glass for this app, this requires a restart of the app to take effect."))
 				}
-			}
-
-			NBSection(.localized("Status Bar Clock")) {
-				Toggle(.localized("Replace Status Bar with Clock"), isOn: $_statusBar.isEnabled)
-				Toggle(.localized("24-Hour Time"), isOn: $_statusBar.uses24HourTime)
-					.disabled(!_statusBar.isEnabled)
-				Toggle(.localized("Hide AM/PM"), isOn: $_statusBar.hidesAMPM)
-					.disabled(!_statusBar.isEnabled)
-				Toggle(.localized("Use Theme Color"), isOn: $_statusBar.usesThemeColor)
-					.disabled(!_statusBar.isEnabled)
-			} footer: {
-				Text(.localized("Replaces the system status bar with a themed clock drawn by the app, in the space the hidden status bar gives up. The clock only shows in portrait on iPhone."))
 			}
 
 			NBSection(.localized("Feedback")) {
