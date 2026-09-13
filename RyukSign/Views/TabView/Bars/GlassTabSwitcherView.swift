@@ -494,6 +494,12 @@ struct GlassTabSwitcherView: View {
 /// Applies real Liquid Glass on iOS 26 and MySign's own recipe everywhere else:
 /// ultra-thin material with a faint white stroke, which is what its rail and
 /// handle were built from.
+///
+/// The content is clipped to the same shape as the glass. Without that the box and
+/// its contents animate on different curves — the rail's labels are inserted at full
+/// width while the glass is still growing, so for a frame or two the text is drawn
+/// wider than the box it is meant to be inside. Clipping makes that impossible at any
+/// animation speed rather than something to tune.
 private struct SwitcherGlass<S: Shape>: ViewModifier {
 	let shape: S
 	var tint: Color?
@@ -502,9 +508,13 @@ private struct SwitcherGlass<S: Shape>: ViewModifier {
 	@ViewBuilder
 	func body(content: Content) -> some View {
 		if #available(iOS 26.0, *) {
-			content.glassEffect(_glass, in: shape)
+			content
+				.clipShape(shape)
+				.glassEffect(_glass, in: shape)
 		} else {
-			content.background { _fallback }
+			content
+				.background { _fallback }
+				.clipShape(shape)
 		}
 	}
 
