@@ -18,6 +18,10 @@ struct DownloadsSettingsView: View {
 	@AppStorage("Feather.showDownloadHeaderInSourcesTab")
 	private var _showDownloadHeaderInSourcesTab: Bool = true
 
+	/// Defaults to on, matching the unset case in `DownloadButtonView`.
+	@AppStorage(DownloadButtonView.switchTabKey)
+	private var _switchTabOnDownload: Bool = true
+
 	@AppStorage("Feather.downloadOverlayTheme")
 	private var _downloadOverlayTheme: String = "default"
 
@@ -44,6 +48,16 @@ struct DownloadsSettingsView: View {
 	// MARK: Body
 	var body: some View {
 		NBList(.localized("Downloads")) {
+			NBSection(.localized("History")) {
+				Toggle(.localized("Switch to Library on Download"), isOn: $_switchTabOnDownload)
+
+				NavigationLink(destination: DownloadHistoryView()) {
+					Label(.localized("Download History"), systemImage: "clock.arrow.circlepath")
+				}
+			} footer: {
+				Text(.localized("Keep a log of everything you download, with the app icon and the date it was saved. Switching tabs takes you to the Library as soon as a download starts."))
+			}
+
 			NBSection(.localized("Display Mode")) {
 				Picker(.localized("Download Display Style"), selection: $_downloadDisplayMode) {
 					ForEach(_downloadDisplayModes, id: \.value) { mode in

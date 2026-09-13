@@ -813,6 +813,10 @@ class DownloadManager: NSObject, ObservableObject {
 		download.isActive = false
 		endImport(for: download)
 
+		// The history entry is written when the download starts; this is the one
+		// place that knows how it actually ended.
+		DownloadHistory.shared.update(id: download.id, status: succeeded ? .completed : .failed)
+
 		// Drop from activity tracking only once archiving completes (not on download finish).
 		if succeeded {
 			completedDownloadNames.append(download.fileName)

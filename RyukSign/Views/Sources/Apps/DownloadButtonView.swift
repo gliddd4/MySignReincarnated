@@ -38,6 +38,9 @@ class TabSelectionObserver: ObservableObject {
 }
 
 struct DownloadButtonView: View {
+	/// Shared with Downloads settings; the toggle and the behaviour must agree.
+	static let switchTabKey = "RyukSign.switchTabOnDownload"
+
 	let app: ASRepository.App
 	@ObservedObject private var downloadManager = DownloadManager.shared
 	@State private var downloadProgress: Double = 0
@@ -136,9 +139,7 @@ struct DownloadButtonView: View {
 					if installedApp.hasUpdate {
 						Button {
 							NBHaptic.tap()
-							if let url = app.currentDownloadUrl {
-                                _ = downloadManager.startDownload(from: url, id: app.currentUniqueId, appName: app.currentName, appDescription: app.localizedDescription)
-							}
+							_startDownload()
 						} label: {
 							Text(.localized("Update"))
 								.lineLimit(1)
@@ -154,9 +155,7 @@ struct DownloadButtonView: View {
 					} else if installedApp.isDowngrade {
 						Button {
 							NBHaptic.tap()
-							if let url = app.currentDownloadUrl {
-								_ = downloadManager.startDownload(from: url, id: app.currentUniqueId, appName: app.currentName, appDescription: app.localizedDescription)
-							}
+							_startDownload()
 						} label: {
 							HStack(spacing: 4) {
 								Image(systemName: "clock.arrow.circlepath")
@@ -201,9 +200,7 @@ struct DownloadButtonView: View {
 
 						Button {
 							NBHaptic.tap()
-							if let url = app.currentDownloadUrl {
-                                _ = downloadManager.startDownload(from: url, id: app.currentUniqueId, appName: app.currentName, appDescription: app.localizedDescription)
-							}
+							_startDownload()
 						} label: {
 							Label(.localized("Download Again"), systemImage: "arrow.down.circle")
 						}
@@ -220,9 +217,7 @@ struct DownloadButtonView: View {
 			} else if !isCheckingInstalled {
 				Button {
 					NBHaptic.tap()
-					if let url = app.currentDownloadUrl {
-						_ = downloadManager.startDownload(from: url, id: app.currentUniqueId, appName: app.currentName, appDescription: app.localizedDescription)
-					}
+					_startDownload()
 				} label: {
 					HStack(spacing: 4) {
 						Image(systemName: "arrow.down.circle")
@@ -265,6 +260,40 @@ struct DownloadButtonView: View {
 		.animation(hasAppeared ? .easeInOut(duration: 0.25) : nil, value: installedApp != nil)
 	}
 	
+	/// Single entry point for starting a download, so the queue, the history log
+	/// and the tab switch can never disagree about what was just kicked off.
+	private func _startDownload() {
+		guard let url = app.currentDownloadUrl else { return }
+
+		let download = downloadManager.startDownload(
+			from: url,
+			id: app.currentUniqueId,
+			appName: app.currentName,
+			appDescription: app.localizedDescription
+		)
+
+		let record = DownloadRecord(
+			id: download.id,
+			name: app.currentName,
+			bundleIdentifier: app.id,
+			version: app.currentVersion,
+			developer: app.developer,
+			iconURL: app.iconURL?.absoluteString,
+			size: app.size,
+			date: Date(),
+			status: .started
+		)
+		DownloadHistory.shared.record(record)
+		DownloadHistory.shared.cacheIcon(for: record)
+
+		// Unset means "on": the whole point is that a download is not something
+		// you should have to go hunting for.
+		let switchTabs = UserDefaults.standard.object(forKey: Self.switchTabKey) as? Bool ?? true
+		if switchTabs {
+			tabSelection.selectedTab = .library
+		}
+	}
+
 	private func setupObserver() {
 		cancellable?.cancel()
 		guard let download = downloadManager.getDownload(by: app.currentUniqueId) else {
