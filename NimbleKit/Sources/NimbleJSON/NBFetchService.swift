@@ -54,6 +54,32 @@ extension NBFetchService {
 		headers: [String: String] = [:],
 		completion: @escaping (Result<T, Error>) -> Void
 	) {
+		fetchRaw(from: url, headers: headers) { result in
+			switch result {
+			case .failure(let error):
+				completion(.failure(error))
+			case .success(let data):
+				do {
+					let decodedData = try JSONDecoder().decode(T.self, from: data)
+					Self.log.debug("Request OK \(url.absoluteString, privacy: .public)")
+					completion(.success(decodedData))
+				} catch {
+					let snippet = String(data: data.prefix(512), encoding: .utf8) ?? "<non-utf8 \(data.count) bytes>"
+					Self.log.error("Request PARSE FAIL \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)\nBody: \(snippet, privacy: .public)")
+					completion(.failure(NBFetchServiceError.parsingError(error)))
+				}
+			}
+		}
+	}
+
+	/// The undecoded response body. Lets callers keep a copy on disk so a cold
+	/// launch can render repositories before the network answers, without the
+	/// model types having to be `Encodable`.
+	public func fetchRaw(
+		from url: URL,
+		headers: [String: String] = [:],
+		completion: @escaping (Result<Data, Error>) -> Void
+	) {
 		DispatchQueue.global(qos: .userInitiated).async {
 			// Create URLRequest with gzip support
 			var request = URLRequest(url: url)
@@ -93,16 +119,7 @@ extension NBFetchService {
 
 				// URLSession automatically decompresses gzip responses,
 				// so we can use the data directly
-				do {
-					let decoder = JSONDecoder()
-					let decodedData = try decoder.decode(T.self, from: data)
-					Self.log.debug("Request OK (HTTP \(statusCode, privacy: .public)) \(url.absoluteString, privacy: .public)")
-					completion(.success(decodedData))
-				} catch {
-					let snippet = String(data: data.prefix(512), encoding: .utf8) ?? "<non-utf8 \(data.count) bytes>"
-					Self.log.error("Request PARSE FAIL (HTTP \(statusCode, privacy: .public)) \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)\nBody: \(snippet, privacy: .public)")
-					completion(.failure(NBFetchServiceError.parsingError(error)))
-				}
+				completion(.success(data))
 			}
 
 			task.resume()

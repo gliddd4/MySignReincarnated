@@ -2,45 +2,72 @@ name: Create New Release
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Marketing version to stamp on the build (e.g. 1.4.0). Blank uses MARKETING_VERSION from the project.'
+        required: false
+        default: ''
+      draft:
+        description: 'Create the release as a draft'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: macos-15
+  release:
+    runs-on: macos-26
+    timeout-minutes: 60
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          submodules: 'true'
-      
-      - name: Use Xcode 16.4
-        run: |
-          sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer
+          submodules: recursive
 
-      - name: Compile RyukSign
-        run: | 
-          agvtool new-version -all $(git rev-parse HEAD)
-          make
-          mkdir upload
-          mv packages/* upload/
-
-      - name: Get Version
-        id: get_version
+      - name: Select newest Xcode
         run: |
-          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Payload/*.app/Info.plist)
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          set -euo pipefail
+          FOUND=$(ls -d /Applications/Xcode*.app 2>/dev/null || true)
+          if [ -z "$FOUND" ]; then
+            echo "::error::No Xcode found on this runner"; exit 1
+          fi
+          LATEST=$(printf '%s\n' "$FOUND" | sort -V | tail -1)
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+          echo "iOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
+
+      - name: Build IPA
+        run: |
+          set -euo pipefail
+          VERSION='${{ inputs.version }}'
+          if [ -n "$VERSION" ]; then
+            make EXTRA_FLAGS="MARKETING_VERSION=$VERSION"
+          else
+            make
+          fi
+          mkdir -p upload
+          mv packages/*.ipa upload/
+
+      - name: Read version from the built app
+        run: |
+          set -euo pipefail
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Payload/RyukSign.app/Info.plist)
+          BUILD=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" Payload/RyukSign.app/Info.plist)
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "BUILD=$BUILD" >> "$GITHUB_ENV"
+          echo "Releasing $VERSION ($BUILD)"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: RyukSign v${{ env.VERSION }}
           tag_name: v${{ env.VERSION }}
-          files: |
-            upload/*ipa
+          files: upload/*.ipa
           generate_release_notes: true
           fail_on_unmatched_files: true
-          draft: false
+          draft: ${{ inputs.draft }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

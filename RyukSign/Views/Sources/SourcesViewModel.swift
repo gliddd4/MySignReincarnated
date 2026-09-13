@@ -126,12 +126,35 @@ final class SourcesViewModel: ObservableObject {
 		// Publish into a working copy cumulatively so `sources` is never blanked mid-load.
 		var working: [AltSource: ASRepository] = [:]
 
+		// Disk cache first: render every repository we already have before the
+		// network is touched, so a large source set is on screen immediately
+		// instead of after the slowest request.
+		var hydrated = 0
+		for item in items {
+			guard
+				let cached = SourceCache.shared.data(for: item.url),
+				let repo = try? JSONDecoder().decode(ASRepository.self, from: cached)
+			else {
+				continue
+			}
+			working[item.source] = repo
+			// Counts come off the cached copy too, so the browser can sort by size
+			// the moment the app launches instead of after the first refresh.
+			SourceCache.shared.recordAppCount(repo.apps.count, for: item.url)
+			hydrated += 1
+		}
+		if hydrated > 0 {
+			Logger.misc.info("fetchSources CACHE: \(hydrated, privacy: .public)/\(items.count, privacy: .public) sources rendered from disk")
+			self.sources = working
+		}
+
 		for startIndex in stride(from: 0, to: items.count, by: batchSize) {
 			let endIndex = min(startIndex + batchSize, items.count)
 			let batch = Array(items[startIndex..<endIndex])
 
 			// Child tasks touch only Sendable values, never the NSManagedObject.
-			let fetched: [(Int, ASRepository?)] = await withTaskGroup(of: (Int, ASRepository?).self) { group in
+			// Raw bytes come back too so the response can be cached verbatim.
+			let fetched: [(Int, ASRepository?, Data?)] = await withTaskGroup(of: (Int, ASRepository?, Data?).self) { group in
 				for (offset, item) in batch.enumerated() {
 					let globalIndex = startIndex + offset
 					let url = item.url
@@ -139,37 +162,48 @@ final class SourcesViewModel: ObservableObject {
 					let isPremium = item.isPremium
 
 					group.addTask {
-						let repo: ASRepository? = await withCheckedContinuation { continuation in
-							service.fetch(from: url, headers: headers) { (result: RepositoryDataHandler) in
+						await withCheckedContinuation { (continuation: CheckedContinuation<(Int, ASRepository?, Data?), Never>) in
+							service.fetchRaw(from: url, headers: headers) { result in
 								switch result {
-								case .success(let repo):
-									continuation.resume(returning: repo)
+								case .success(let data):
+									do {
+										let repo = try JSONDecoder().decode(ASRepository.self, from: data)
+										continuation.resume(returning: (globalIndex, repo, data))
+									} catch {
+										Logger.misc.error("Source parse FAILED\(isPremium ? " [PREMIUM]" : "", privacy: .public) \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
+										continuation.resume(returning: (globalIndex, nil, nil))
+									}
 								case .failure(let error):
 									Logger.misc.error("Source fetch FAILED\(isPremium ? " [PREMIUM]" : "", privacy: .public) \(url.absoluteString, privacy: .public): \(error.localizedDescription, privacy: .public)")
-									continuation.resume(returning: nil)
+									continuation.resume(returning: (globalIndex, nil, nil))
 								}
 							}
 						}
-						return (globalIndex, repo)
 					}
 				}
 
-				var collected: [(Int, ASRepository?)] = []
-				for await pair in group {
-					collected.append(pair)
+				var collected: [(Int, ASRepository?, Data?)] = []
+				for await triple in group {
+					collected.append(triple)
 				}
 				return collected
 			}
 
-			for (idx, repo) in fetched {
-				if let repo {
-					working[items[idx].source] = repo
+			for (idx, repo, data) in fetched {
+				guard let repo else { continue }
+				working[items[idx].source] = repo
+				SourceCache.shared.recordAppCount(repo.apps.count, for: items[idx].url)
+				// Keep the newest successful body for the next cold start.
+				if let data {
+					SourceCache.shared.store(data, for: items[idx].url)
 				}
 			}
 
 			// Publish progress (grows, never empties).
 			self.sources = working
 		}
+
+		SourceCache.shared.prune()
 
 		Logger.misc.info("fetchSources DONE: \(working.count, privacy: .public)/\(items.count, privacy: .public) loaded")
 	}
