@@ -1,0 +1,61 @@
+name: Build
+
+# Compile-and-package check. Runs on every push and PR so a broken merge is
+# caught without publishing anything.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # RyukSign references iOS 26 APIs (BGContinuedProcessingTask, Liquid Glass),
+    # so it needs an iOS 26 SDK. macos-26 ships Xcode 26.
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Select newest Xcode
+        run: |
+          set -euo pipefail
+          FOUND=$(ls -d /Applications/Xcode*.app 2>/dev/null || true)
+          if [ -z "$FOUND" ]; then
+            echo "::error::No Xcode found on this runner"; exit 1
+          fi
+          LATEST=$(printf '%s\n' "$FOUND" | sort -V | tail -1)
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+          echo "iOS SDK: $(xcrun --sdk iphoneos --show-sdk-version)"
+
+      - name: Build unsigned IPA
+        run: make
+
+      - name: Verify output
+        run: |
+          set -euo pipefail
+          ls -lh packages/
+          test -f packages/RyukSign.ipa
+          /usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Payload/RyukSign.app/Info.plist
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: RyukSign-unsigned-ipa
+          path: packages/*.ipa
+          if-no-files-found: error
+          retention-days: 14

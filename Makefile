@@ -6,6 +6,13 @@ STAGE := $(TMP)/stage
 APP := $(TMP)/Build/Products/Release-$(PLATFORM)
 CERT_JSON_URL := https://ryuksign-install.ryuksign.workers.dev/pack.json
 
+# Short commit stamped into CFBundleVersion so a sideloaded build can be traced
+# back to the commit it came from. Overridable: `make GIT_SHA=abc1234`.
+GIT_SHA := $(shell git rev-parse --short HEAD 2>/dev/null || echo 0)
+
+# Extra xcodebuild settings, e.g. `make EXTRA_FLAGS="MARKETING_VERSION=1.4.0"`.
+EXTRA_FLAGS ?=
+
 .PHONY: all deps clean $(SCHEMES)
 
 all: $(SCHEMES)
@@ -37,7 +44,9 @@ $(SCHEMES): deps
 	    -derivedDataPath $(TMP) \
 	    -skipPackagePluginValidation \
 	    CODE_SIGNING_ALLOWED=NO \
-	    ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO
+	    ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=NO \
+	    CURRENT_PROJECT_VERSION=$(GIT_SHA) \
+	    $(EXTRA_FLAGS)
 
 	rm -rf Payload
 	rm -rf $(STAGE)/

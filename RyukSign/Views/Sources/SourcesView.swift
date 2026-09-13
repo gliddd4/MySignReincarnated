@@ -44,6 +44,53 @@ struct SourcesView: View {
 		_sources.filter { _searchText.isEmpty || ($0.name?.localizedCaseInsensitiveContains(_searchText) ?? false) }
 	}
 
+	// MARK: Sorting & favourites
+
+	@ObservedObject private var _favorites = SourceFavorites.shared
+	@ObservedObject private var _sourceCache = SourceCache.shared
+
+	@AppStorage("RyukSign.sourceSort") private var _sortRawValue: String = SourceSortOption.nameAZ.rawValue
+
+	private var _sortOption: SourceSortOption {
+		SourceSortOption(rawValue: _sortRawValue) ?? .nameAZ
+	}
+
+	/// Favourites get their own section so a long list stays navigable.
+	private var _favoriteSources: [AltSource] {
+		_sortedSources(_filteredSources.filter { _favorites.isFavorite(SourceFavorites.key(for: $0)) })
+	}
+
+	private var _otherSources: [AltSource] {
+		_sortedSources(_filteredSources.filter { !_favorites.isFavorite(SourceFavorites.key(for: $0)) })
+	}
+
+	private func _sortedSources(_ sources: [AltSource]) -> [AltSource] {
+		sources.sorted { lhs, rhs in
+			switch _sortOption {
+			case .nameAZ:
+				return (lhs.name ?? "").localizedCaseInsensitiveCompare(rhs.name ?? "") == .orderedAscending
+			case .nameZA:
+				return (lhs.name ?? "").localizedCaseInsensitiveCompare(rhs.name ?? "") == .orderedDescending
+			case .mostApps:
+				return _appCount(lhs) > _appCount(rhs)
+			case .fewestApps:
+				return _appCount(lhs) < _appCount(rhs)
+			case .recentlyUpdated:
+				return _lastUpdated(lhs) > _lastUpdated(rhs)
+			}
+		}
+	}
+
+	private func _appCount(_ source: AltSource) -> Int {
+		guard let url = source.sourceURL else { return 0 }
+		return _sourceCache.appCount(for: url) ?? 0
+	}
+
+	private func _lastUpdated(_ source: AltSource) -> Date {
+		guard let url = source.sourceURL else { return .distantPast }
+		return _sourceCache.lastUpdated(for: url) ?? .distantPast
+	}
+
 	@FetchRequest(
 		entity: AltSource.entity(),
 		sortDescriptors: [NSSortDescriptor(keyPath: \AltSource.name, ascending: true)],
@@ -119,6 +166,7 @@ struct SourcesView: View {
 		NBListAdaptable {
 			if !_filteredSources.isEmpty {
 				allRepositoriesSection
+				favoritesSection
 				repositoriesSection
 			}
 		}
@@ -198,19 +246,51 @@ struct SourcesView: View {
 	}
 
 	@ViewBuilder
+	private var favoritesSection: some View {
+		if !_favoriteSources.isEmpty {
+			NBSection(
+				.localized("Favourites"),
+				secondary: "\(_favoriteSources.count)"
+			) {
+				ForEach(_favoriteSources) { source in
+					if _isEditMode {
+						editModeRow(for: source)
+					} else {
+						normalModeRow(for: source)
+					}
+				}
+			}
+		}
+	}
+
+	@ViewBuilder
 	private var repositoriesSection: some View {
-		let sectionTitle = _isEditMode ? "\(_selectedSources.count) selected" : "\(_filteredSources.count)"
+		let sectionTitle = _isEditMode ? "\(_selectedSources.count) selected" : "\(_otherSources.count)"
 		NBSection(
 			.localized("Repositories"),
 			secondary: sectionTitle
 		) {
-			ForEach(_filteredSources) { source in
+			ForEach(_otherSources) { source in
 				if _isEditMode {
 					editModeRow(for: source)
 				} else {
 					normalModeRow(for: source)
 				}
 			}
+		}
+	}
+
+	@ViewBuilder
+	private var sortMenu: some View {
+		Menu {
+			Picker(.localized("Sort"), selection: $_sortRawValue) {
+				ForEach(SourceSortOption.allCases) { option in
+					Label(option.label, systemImage: option.systemImage)
+						.tag(option.rawValue)
+				}
+			}
+		} label: {
+			Image(systemName: "arrow.up.arrow.down")
 		}
 	}
 
@@ -329,12 +409,15 @@ struct SourcesView: View {
 				}
 				.disabled(_selectedSources.isEmpty)
 			} else {
-				Button {
-					_isAddingPresenting = true
-				} label: {
-					Image(systemName: "plus")
+				HStack(spacing: 12) {
+					sortMenu
+					Button {
+						_isAddingPresenting = true
+					} label: {
+						Image(systemName: "plus")
+					}
+					.disabled(_addingSourceLoading)
 				}
-				.disabled(_addingSourceLoading)
 			}
 		}
 	}
@@ -416,5 +499,39 @@ struct SourcesView: View {
 			}
 		}
 		return false
+	}
+}
+
+// MARK: - Sorting
+
+/// Repository ordering. "Most apps" reads from the app-count cache, which is
+/// written on every refresh and reloaded on launch, so it is populated before
+/// the network answers.
+enum SourceSortOption: String, CaseIterable, Identifiable {
+	case nameAZ
+	case nameZA
+	case mostApps
+	case fewestApps
+	case recentlyUpdated
+
+	var id: String { rawValue }
+
+	var label: String {
+		switch self {
+		case .nameAZ:          return .localized("Name (A–Z)")
+		case .nameZA:          return .localized("Name (Z–A)")
+		case .mostApps:        return .localized("Most Apps")
+		case .fewestApps:      return .localized("Fewest Apps")
+		case .recentlyUpdated: return .localized("Recently Updated")
+		}
+	}
+
+	var systemImage: String {
+		switch self {
+		case .nameAZ, .nameZA: return "textformat"
+		case .mostApps:        return "arrow.down.circle"
+		case .fewestApps:      return "arrow.up.circle"
+		case .recentlyUpdated: return "clock"
+		}
 	}
 }
