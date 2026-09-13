@@ -98,6 +98,9 @@ struct SettingsView: View {
                     NavigationLink(destination: FilesCompressionView()) {
                         Label(.localized("Files & Compression"), systemImage: "archivebox")
                     }
+                    NavigationLink(destination: SourceCacheSettingsView()) {
+                        Label(.localized("Repository Cache"), systemImage: "cylinder.split.1x2")
+                    }
                     NavigationLink(destination: InstallationView()) {
                         Label(.localized("Installation"), systemImage: "arrow.down.app")
                     }

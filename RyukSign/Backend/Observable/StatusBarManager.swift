@@ -64,9 +64,13 @@ final class StatusBarManager: ObservableObject {
 
 	private init() {
 		let defaults = UserDefaults.standard
+		// Read into locals first: touching a property wrapper's value on `self`
+		// before every stored property is initialised is a compile error.
+		let enabled = defaults.bool(forKey: Keys.enabled)
+		let hideSystem = defaults.bool(forKey: Keys.hideSystem)
 
-		isEnabled = defaults.bool(forKey: Keys.enabled)
-		hidesSystemStatusBar = defaults.bool(forKey: Keys.hideSystem) || isEnabled
+		isEnabled = enabled
+		hidesSystemStatusBar = hideSystem || enabled
 		uses24HourTime = defaults.bool(forKey: Keys.use24)
 		hidesAMPM = defaults.bool(forKey: Keys.hideAMPM)
 		usesThemeColor = defaults.bool(forKey: Keys.useThemeColor)

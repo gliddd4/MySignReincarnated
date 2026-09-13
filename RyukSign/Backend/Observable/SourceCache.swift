@@ -133,11 +133,13 @@ final class SourceCache: ObservableObject {
 		try? FileManager.default.removeItem(at: _location(for: url))
 	}
 
-	/// Drops cached bodies, counts and icon tints — the "clear cache" button.
+	/// Drops cached bodies, counts, icon tints and resolved icons — the "clear
+	/// cache" button.
 	func clear() {
 		try? FileManager.default.removeItem(at: _directory)
 		clearCounts()
 		IconTintCache.shared.clear()
+		RepositoryIconStore.shared.clear()
 	}
 
 	// MARK: - Maintenance

@@ -18,6 +18,7 @@ import CoreData
 import AltSourceKit
 import NimbleViews
 import NimbleExtensions
+import NukeUI
 
 // MARK: - View
 struct SourcesCellView: View {
@@ -30,6 +31,7 @@ struct SourcesCellView: View {
 	@ObservedObject private var _cache = SourceCache.shared
 	@ObservedObject private var _tints = IconTintCache.shared
 	@ObservedObject private var _favorites = SourceFavorites.shared
+	@ObservedObject private var _repoIcons = RepositoryIconStore.shared
 
 	@State private var _isExcluded: Bool = false
 	@State private var _isShowingJSON = false
@@ -57,6 +59,31 @@ struct SourcesCellView: View {
 		_tints.tint(for: _key)
 	}
 
+	/// Icon candidates in preference order: the repository's own icon, then its
+	/// apps' icons. The first one that loads is cached and becomes the row icon,
+	/// which is why an icon-less repository no longer looks like every other one.
+	private var _candidateIcons: [URL] {
+		var urls: [URL] = []
+
+		func append(_ url: URL?) {
+			guard let url, !urls.contains(url) else { return }
+			urls.append(url)
+		}
+
+		append(source.iconURL)
+
+		if let repository = SourcesViewModel.shared.sources[source] {
+			append(repository.iconURL)
+			// A handful of apps is enough to find a recognisable icon, and it stops
+			// a 15,000-app repository from firing 15,000 requests.
+			for app in repository.apps.prefix(5) {
+				append(app.iconURL)
+			}
+		}
+
+		return urls
+	}
+
 	/// "1,204 apps · Aug 3, 2026" — or nothing until we know, so the row stays clean.
 	private var _subtitle: String {
 		guard let url = source.sourceURL else { return "" }
@@ -78,14 +105,17 @@ struct SourcesCellView: View {
 		let cellContent = HStack(spacing: 12) {
 			// 40pt rather than 56pt: the row is about scanning a long list, and the
 			// icon is still unambiguous at this size.
-			FRIconCellView(
+			_icon
+
+			NBTitleWithSubtitleView(
 				title: source.name ?? .localized("Unknown"),
 				subtitle: _subtitle,
-				iconUrl: source.iconURL,
-				size: 40
+				linelimit: 0
 			)
 
 			Spacer(minLength: 0)
+
+			_appCountBadge
 
 			if _isFavorite {
 				Image(systemName: "star.fill")
@@ -102,6 +132,8 @@ struct SourcesCellView: View {
 					.foregroundStyle(.secondary)
 					.font(.caption2)
 			}
+
+			_chevron
 		}
 		.padding(isRegular ? 10 : 0)
 		.background(
@@ -112,8 +144,12 @@ struct SourcesCellView: View {
 		)
 		.onAppear {
 			_isExcluded = RyukSignAPI.isSourceExcluded(_sourceIdentifier)
+			// Resolve against the same candidates the icon uses, so a repository
+			// with no declared icon still gets a colour instead of none.
+			let candidates = _candidateIcons
+			_repoIcons.ensureIcon(for: _key, candidates: candidates)
 			// Extract once per source; cached to disk from then on.
-			_tints.ensureTint(for: _key, iconURL: source.iconURL)
+			_tints.ensureTint(for: _key, iconURL: candidates.first)
 		}
 
 		if isEditMode {
@@ -147,15 +183,66 @@ struct SourcesCellView: View {
 	}
 }
 
+// MARK: - Extension: View (row pieces)
+extension SourcesCellView {
+	/// The cached icon when we have one, else the declared icon, else a placeholder
+	/// that the resolved fallback replaces as soon as it lands.
+	@ViewBuilder
+	private var _icon: some View {
+		if let cached = _repoIcons.image(for: _key) {
+			Image(uiImage: cached)
+				.appIconStyle(size: 40)
+		} else if let iconURL = _candidateIcons.first {
+			LazyImage(url: iconURL) { state in
+				if let image = state.image {
+					image.appIconStyle(size: 40)
+				} else {
+					Image("App_Unknown")
+						.appIconStyle(size: 40)
+				}
+			}
+		} else {
+			Image("App_Unknown")
+				.appIconStyle(size: 40)
+		}
+	}
+
+	/// How many apps the repository carries. Compact ("1.2K") so a wide number
+	/// never squeezes the name, and tinted so it belongs to the row it sits in.
+	@ViewBuilder
+	private var _appCountBadge: some View {
+		if let url = source.sourceURL, let count = _cache.appCount(for: url) {
+			Text(count.formatted(.number.notation(.compactName)))
+				.font(.caption2.weight(.semibold))
+				.monospacedDigit()
+				.foregroundStyle(_tint ?? Color.secondary)
+				.padding(.horizontal, 7)
+				.padding(.vertical, 2)
+				.background(
+					Capsule().fill((_tint ?? Color.gray).opacity(0.18))
+				)
+		}
+	}
+
+	/// `NavigationLink` here uses `.plain`, so there is no system disclosure
+	/// indicator to conflict with — this one carries the repository's colour.
+	private var _chevron: some View {
+		Image(systemName: "chevron.right")
+			.font(.caption.weight(.semibold))
+			.foregroundStyle(_tint ?? Color(uiColor: .tertiaryLabel))
+	}
+}
+
 // MARK: - Extension: View (menu)
 extension SourcesCellView {
 	@ViewBuilder
 	private func _actions(for source: AltSource) -> some View {
 		Button(.localized("Delete"), systemImage: "trash", role: .destructive) {
-			// Drop the cached body and counts along with the source itself.
+			// Drop the cached body, counts and icon along with the source itself.
 			if let url = source.sourceURL {
 				SourceCache.shared.remove(for: url)
 			}
+			RepositoryIconStore.shared.remove(for: _key)
 			Storage.shared.deleteSource(for: source)
 		}
 	}
@@ -182,7 +269,10 @@ extension SourcesCellView {
 			_isShowingJSON = true
 		}
 		Button(.localized("Refresh Icon Colour"), systemImage: "paintpalette") {
-			_tints.refreshTint(for: _key, iconURL: source.iconURL)
+			_tints.refreshTint(for: _key, iconURL: _candidateIcons.first)
+		}
+		Button(.localized("Refresh Icon"), systemImage: "arrow.clockwise") {
+			_repoIcons.refreshIcon(for: _key, candidates: _candidateIcons)
 		}
 		Button(.localized("Debug Info"), systemImage: "ladybug") {
 			_isShowingDebug = true
