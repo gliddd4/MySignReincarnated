@@ -43,6 +43,11 @@ extension SourceAppsTableRepresentableView.Coordinator {
             }
         }
         
+        /// Day-section format, shared by the sort and by the jump-to-app lookup.
+        /// Two copies of this string would eventually disagree, and the lookup
+        /// fails silently when it does.
+        static let sectionDateFormat = "MMMM d, yyyy"
+
         /// The section letter an app files under, or "#" when its first
         /// character is not an ASCII letter.
         ///
@@ -92,7 +97,7 @@ extension SourceAppsTableRepresentableView.Coordinator {
         
         func sortByDate(_ apps: [(source: ASRepository, app: ASRepository.App)]) -> [(source: ASRepository, app: ASRepository.App)] {
             let formatter = DateFormatter()
-            formatter.dateFormat = "MMMM d, yyyy"
+            formatter.dateFormat = Self.sectionDateFormat
 
             let grouped = Dictionary(grouping: apps) {
                 $0.app.currentDate?.date.stripTime() ?? .distantPast
@@ -153,8 +158,9 @@ extension SourceAppsTableRepresentableView.Coordinator {
         
         func calculateNameIndexPath(for targetIndex: Int, in allApps: [(source: ASRepository, app: ASRepository.App)]) -> IndexPath {
             let targetApp = allApps[targetIndex]
-            let firstLetter = targetApp.app.name?.trimmingCharacters(in: .whitespacesAndNewlines).first?.uppercased() ?? "#"
-            let sectionKey = firstLetter.range(of: "[A-Z]", options: .regularExpression) != nil ? firstLetter : "#"
+            // The same helper the grouping uses, so this key always matches one
+            // that is actually present in `groupedByName`.
+            let sectionKey = Self.sectionLetter(for: targetApp.app.name)
             
             guard let sectionIndex = cache.sectionTitles.firstIndex(of: sectionKey),
                   let appsInSection = cache.groupedByName[sectionKey],
@@ -170,7 +176,7 @@ extension SourceAppsTableRepresentableView.Coordinator {
         func calculateDateIndexPath(for targetIndex: Int, in allApps: [(source: ASRepository, app: ASRepository.App)]) -> IndexPath {
             let targetApp = allApps[targetIndex]
             let formatter = DateFormatter()
-            formatter.dateFormat = "MMMM d, yyyy"
+            formatter.dateFormat = Self.sectionDateFormat
             let dateKey = formatter.string(from: targetApp.app.currentDate?.date.stripTime() ?? .distantPast)
             
             guard let sectionIndex = cache.sectionTitles.firstIndex(of: dateKey),
