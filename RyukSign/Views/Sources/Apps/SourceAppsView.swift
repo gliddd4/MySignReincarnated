@@ -107,6 +107,10 @@ struct SourceAppsView: View {
                 _emptyStateView
             }
         }
+        // This screen's own toolbar is not in the glass grid yet, so it publishes an
+        // empty one rather than letting the previous screen's actions linger in the
+        // grid while you are inside a repository.
+        .tabToolbar(TabToolbarConfig())
         .navigationTitle(_navigationTitle)
         // Attach the search bar only once a real list exists, else it floats above skeleton/empty.
         .if(_hasLoadedContent) { $0.searchable(text: $_searchText, placement: .platform()) }
