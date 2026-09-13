@@ -344,8 +344,6 @@ struct LibraryView: View {
         .disabled(isDisabled || _selectedAppUUIDs.isEmpty)
     }
 
-    // MARK: Import Menu Actions
-    @ViewBuilder
     // MARK: Glass grid config
 
     /// What the glass grid shows for this screen. The split between the two boxes is
@@ -397,6 +395,8 @@ struct LibraryView: View {
         return config
     }
 
+    // MARK: Import Menu Actions
+    @ViewBuilder
     private var importMenuActions: some View {
         Button(.localized("Import from Files"), systemImage: "folder") {
             DocumentPicker.open([.ipa, .tipa], multiple: true, folder: .apps) { urls in

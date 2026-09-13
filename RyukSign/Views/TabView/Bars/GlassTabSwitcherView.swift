@@ -146,14 +146,14 @@ struct GlassTabSwitcherView: View {
 						_searchButton
 					}
 					if !_textActions.isEmpty {
-						_textBox
+						_textToolbarBox
 					}
 				}
 			}
 
 			HStack(alignment: .center, spacing: _boxGap) {
 				if !_iconActions.isEmpty {
-					_iconBox
+					_iconToolbarBox
 				}
 				_rail
 			}
@@ -253,8 +253,9 @@ struct GlassTabSwitcherView: View {
 
 	// MARK: Toolbar boxes
 
-	/// Icons with no word on them, in their own box beside the rail.
-	private var _iconBox: some View {
+	/// Icons with no word on them, in their own box beside the rail. Named for the
+	/// toolbar, not just the icon, because `_iconBox` is already the size of a glyph.
+	private var _iconToolbarBox: some View {
 		let glyph = _glyphFor(_iconActions.count)
 
 		return HStack(spacing: _itemGap) {
@@ -267,7 +268,7 @@ struct GlassTabSwitcherView: View {
 	}
 
 	/// Items that carry a word, in their own box directly above the rail.
-	private var _textBox: some View {
+	private var _textToolbarBox: some View {
 		let glyph = _glyphFor(_textActions.count)
 
 		return HStack(spacing: _labelSpacing + 4) {

@@ -116,11 +116,14 @@ extension View {
 
 	/// The glass style puts search in its own glass field, so the system search
 	/// field must not also be attached — two fields would fight over one query.
+	/// `@MainActor` because `.platform()` is, and a default argument is not evaluated
+	/// on the main actor by virtue of the caller being there.
+	@MainActor
 	@ViewBuilder
 	func adaptiveSearchable(
 		text: Binding<String>,
 		style: TabBarStyle,
-		placement: SearchFieldPlacement = .platform(),
+		placement: SearchFieldPlacement? = nil,
 		prompt: String? = nil
 	) -> some View {
 		if style == .glassSwitcher {
@@ -130,9 +133,9 @@ extension View {
 				}
 			}
 		} else if let prompt {
-			self.searchable(text: text, placement: placement, prompt: Text(prompt))
+			self.searchable(text: text, placement: placement ?? .platform(), prompt: Text(prompt))
 		} else {
-			self.searchable(text: text, placement: placement)
+			self.searchable(text: text, placement: placement ?? .platform())
 		}
 	}
 }
