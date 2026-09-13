@@ -18,18 +18,36 @@ struct SourceAppsCellView: View {
 	
 	var source: ASRepository
 	var app: ASRepository.App
+
+	/// One source of truth for the icon column: the icon is this wide and the text
+	/// starts this far in, which is what lets the description below line up with it.
+	private static let _iconSize: CGFloat = 30
+	private static let _iconSpacing: CGFloat = 10
+	private var _textColumn: CGFloat { Self._iconSize + Self._iconSpacing }
+
+	/// "Big Description" cell appearance, less the two settings that turn descriptions
+	/// off altogether.
+	private var _flowsDescriptionBelow: Bool {
+		_storeCellAppearance != 0
+			&& !_hidesAppDescriptions
+			&& !(app.localizedDescription ?? "").isEmpty
+	}
 	
 	var body: some View {
 		VStack {
 			HStack(spacing: 2) {
 				FRIconCellView(
 					title: app.currentName,
-					subtitle: Self.appDescription(app: app),
+					// When the description flows underneath, this line keeps only the version
+					// and the text below carries on from where this line left off.
+					subtitle: _flowsDescriptionBelow
+						? (app.currentVersion ?? "")
+						: Self.appDescription(app: app),
 					iconUrl: app.iconURL,
 					// 30pt and a single text line: this list can hold 15,000 apps, so
 					// every row has to stay the same short height all the way down.
-					size: 30,
-					spacing: 10,
+					size: Self._iconSize,
+					spacing: Self._iconSpacing,
 					lineLimit: 1,
 					// The repository the app came from, tucked into the icon's own corner.
 					badgeIconURL: source.currentIconURL
@@ -37,21 +55,15 @@ struct SourceAppsCellView: View {
 				DownloadButtonView(app: app)
 			}
 			
-			if _storeCellAppearance != 0,
-			   !_hidesAppDescriptions,
-			   let desc = app.localizedDescription {
-				Text(desc)
-					.frame(maxWidth: .infinity, alignment: .leading)
-					.font(.subheadline)
-					.foregroundStyle(.secondary)
-					.multilineTextAlignment(.leading)
-					.padding(.top, 2)
-					// Runs to as many lines as it needs, across the full width of the row —
-					// under the icon, the name and the download button, rather than being
-					// clamped above them. `fixedSize` on the vertical axis is what stops the
-					// self-sizing cell compressing it back down. "Standard" cell appearance
-					// and the Browse setting both still turn descriptions off entirely.
-					.fixedSize(horizontal: false, vertical: true)
+			if _flowsDescriptionBelow, let desc = app.localizedDescription {
+				FlowingTextView(
+					text: desc,
+					// The first line starts under the text column above, so it reads as the
+					// description carrying on; every line after that runs the full width of
+					// the row, under the icon and the download button alike.
+					firstLineIndent: _textColumn
+				)
+				.padding(.top, 2)
 			}
 		}
 	}
